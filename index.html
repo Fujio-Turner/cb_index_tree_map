@@ -237,6 +237,8 @@ function makePie(elId,title,data){const el=document.getElementById(elId);if(!el)
 
 function makeGauge(elId,title,value,max,unit){const el=document.getElementById(elId);if(!el)return;const ch=echarts.init(el);activeCharts.push(ch);const pct=max>0?(value/max*100):0;ch.setOption({series:[{type:'gauge',startAngle:200,endAngle:-20,min:0,max:100,progress:{show:true,width:14,itemStyle:{color:pct>90?'#ef4444':pct>70?'#f59e0b':'#22c55e'}},axisLine:{lineStyle:{width:14,color:[[1,'#e5e7eb']]}},axisTick:{show:false},splitLine:{show:false},axisLabel:{show:false},pointer:{show:false},title:{offsetCenter:[0,'40%'],fontSize:11,color:'#666'},detail:{valueAnimation:true,offsetCenter:[0,'0%'],fontSize:20,fontWeight:'bold',formatter:()=>fmt(value),color:'#333'},data:[{value:pct.toFixed(0),name:title+'\n'+fmt(value)+' / '+fmt(max)}]}]})}
 
+function makeStackedDiskMemBar(elId,data){const el=document.getElementById(elId);if(!el)return;const ch=echarts.init(el);activeCharts.push(ch);const labels=data.map(x=>x.name);const diskOnly=data.map(x=>Math.max(0,(x.disk_size||0)-(x.memory_used||0)));const memValues=data.map(x=>x.memory_used||0);ch.setOption({title:{text:'Index Size: Disk vs In-Memory',left:'center',textStyle:{fontSize:12}},tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:function(p){if(!p.length)return'';const idx=p[0].dataIndex;const d=data[idx];let h='<b>'+p[0].name+'</b><br>';h+=p[0].marker+' On Disk: '+fmt(Math.max(0,(d.disk_size||0)-(d.memory_used||0)))+'<br>';h+=p[1].marker+' In Memory: '+fmt(d.memory_used||0)+'<br>';h+='Total (disk_size): '+fmt(d.disk_size||0);return h}},legend:{data:['On Disk','In Memory'],top:28,textStyle:{fontSize:10}},grid:{left:10,right:20,top:60,bottom:5,containLabel:true},xAxis:{type:'value',axisLabel:{fontSize:10,formatter:fmt}},yAxis:{type:'category',data:labels,axisLabel:{fontSize:9,width:160,overflow:'truncate'},inverse:true},series:[{name:'On Disk',type:'bar',stack:'total',data:diskOnly,itemStyle:{color:'#b91c1c'},barMaxWidth:18},{name:'In Memory',type:'bar',stack:'total',data:memValues,itemStyle:{color:'rgba(239,68,68,0.3)',borderColor:'#ef4444',borderWidth:1},barMaxWidth:18,label:{show:true,position:'right',fontSize:10,color:'#666',formatter:function(p){const d=data[p.dataIndex];const pct=d.disk_size>0?((d.memory_used||0)/d.disk_size*100).toFixed(1):0;return pct+'% in mem'}}}]})}
+
 function onRowClick(row,nIdx){const key=row.dataset.key;row.closest('table').querySelectorAll('tr.highlighted').forEach(r=>r.classList.remove('highlighted'));row.classList.add('highlighted');const entry=chartIndexMaps.find(m=>m.nodeIdx===nIdx);if(!entry)return;function findN(nodes,t){for(const n of nodes){if(n._fullPath===t)return n.name;if(n.children){const f=findN(n.children,t);if(f)return f}}return null}const nm=findN(entry.data,key);if(nm){entry.chart.dispatchAction({type:'highlight',seriesIndex:0,name:nm});document.getElementById('ch-'+nIdx).scrollIntoView({behavior:'smooth',block:'center'});setTimeout(()=>entry.chart.dispatchAction({type:'downplay',seriesIndex:0,name:nm}),3000)}}
 
 // ===== STATS TABLE =====
@@ -411,7 +413,7 @@ if(statsF.length){
   const bucketMem={};statsF.forEach(x=>{bucketMem[x.bucket]=(bucketMem[x.bucket]||0)+(x.memory_used||0)});
   html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div id="pie-mem" class="abox"></div></div></div>`;
 
-  // Bar: Top frag
+  // Bar: Disk vs In-Memory
   html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div id="bar-frag" class="abox"></div></div></div>`;
 
   // Bar: Top disk
@@ -455,9 +457,9 @@ setTimeout(()=>{
     makePie('pie-disk','Disk Usage by Bucket',Object.entries(bucketDisk).map(([n,v])=>({name:n,value:v})));
     const bucketMem={};statsF.forEach(x=>{bucketMem[x.bucket]=(bucketMem[x.bucket]||0)+(x.memory_used||0)});
     makePie('pie-mem','Memory Usage by Bucket',Object.entries(bucketMem).map(([n,v])=>({name:n,value:v})));
-    // Frag bar
-    const topFrag=[...statsF].sort((a,b)=>b.frag_percent-a.frag_percent).slice(0,15);
-    makeBar('bar-frag','Top Fragmentation %',topFrag.map(x=>x.name),topFrag.map(x=>({value:x.frag_percent,itemStyle:{color:x.frag_percent>70?'#ef4444':x.frag_percent>30?'#f59e0b':'#22c55e'}})),'#ef4444',v=>v+'%');
+    // Stacked bar: Disk vs In-Memory
+    const topMem=[...statsF].sort((a,b)=>(b.disk_size||0)-(a.disk_size||0)).slice(0,15);
+    makeStackedDiskMemBar('bar-frag',topMem);
     // Disk bar
     const topDisk=[...statsF].sort((a,b)=>(b.disk_size||0)-(a.disk_size||0)).slice(0,15);
     makeBar('bar-disk','Top Disk Size',topDisk.map(x=>x.name),topDisk.map(x=>x.disk_size||0),'#3b82f6',fmt);
