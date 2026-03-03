@@ -217,7 +217,7 @@ function applyFilters(){cascadeFilters();renderTreemapView();renderStatsView();i
 function addStatsNode(){statsNodeCount++;const c=document.getElementById('stats-nodes'),d=document.createElement('div');d.className='stats-node-input mb-2';d.innerHTML=`<div class="flex items-center gap-2 mb-1"><span class="text-xs font-bold uppercase text-base-content/50">Node ${statsNodeCount}:</span><input type="text" class="input input-bordered input-xs w-48 node-name" value="Index Node ${statsNodeCount}"><button class="btn btn-ghost btn-xs text-error" onclick="this.closest('.stats-node-input').remove()">✕</button></div><textarea class="textarea textarea-bordered w-full h-24 font-mono text-xs node-stats-json" placeholder='Paste stats JSON...'></textarea>`;c.appendChild(d)}
 
 // ===== PARSING =====
-function parseSystemJSON(js){let d;try{d=JSON.parse(js)}catch{try{d=JSON.parse('['+js+']')}catch{throw new Error('Invalid JSON')}}if(!Array.isArray(d)){if(d.results)d=d.results;else throw new Error('Expected array')}const flat=[];d.forEach(r=>{const idx=r.indexes||r;if(!idx.name)return;const isFTS=idx.using==='fts',bucket=idx.bucket_id||idx.keyspace_id||'unknown',scope=idx.scope_id||'_default',collection=idx.bucket_id?idx.keyspace_id:'_default',dn=isFTS?idx.name+' [FTS]':idx.name;flat.push({fullKey:`${bucket}:${scope}:${collection}:${dn}`,bucket,scope,collection,name:dn,value:1,type:idx.using||'gsi',state:idx.state||'unknown',replica:(idx.metadata&&idx.metadata.num_replica)||0,condition:idx.condition||'',keys:idx.index_key||[],keysStr:(idx.index_key||[]).join(', ')})});return flat}
+function parseSystemJSON(js){let d;try{d=JSON.parse(js)}catch{try{d=JSON.parse('['+js+']')}catch{throw new Error('Invalid JSON')}}if(!Array.isArray(d)){if(d.results)d=d.results;else throw new Error('Expected array')}const flat=[];d.forEach(r=>{const idx=r.indexes||r;if(!idx.name)return;const isFTS=idx.using==='fts',bucket=idx.bucket_id||idx.keyspace_id||'unknown',scope=idx.scope_id||'_default',collection=idx.bucket_id?idx.keyspace_id:'_default',dn=isFTS?idx.name+' [FTS]':idx.name;flat.push({fullKey:`${bucket}:${scope}:${collection}:${dn}`,bucket,scope,collection,name:dn,value:1,type:idx.using||'gsi',state:idx.state||'unknown',replica:(idx.metadata&&idx.metadata.num_replica)||0,condition:idx.condition||'',keys:idx.index_key||[],keysStr:(idx.index_key||[]).join(', '),isPrimary:!!idx.is_primary})});return flat}
 
 function parseStatsNodeJSON(js,metric){let d;try{d=JSON.parse(js)}catch{throw new Error('Invalid JSON')}let indexer=null;const flat=[];for(const[key,s]of Object.entries(d)){if(key==='indexer'){indexer=s;continue}const p=key.split(':');let bucket,scope,collection,name;if(p.length===2){bucket=p[0];scope='_default';collection='_default';name=p[1]}else if(p.length===4){bucket=p[0];scope=p[1];collection=p[2];name=p[3]}else{bucket=p[0];scope=p.length>2?p[1]:'_default';collection=p.length>3?p[2]:'_default';name=p[p.length-1]}const ds=s.disk_size||0,da=s.data_size||0;flat.push({fullKey:key,bucket,scope,collection,name,value:s[metric]||ds||da||0,disk_size:ds,data_size:da,bloat_ratio:da>0?ds/da:0,items_count:s.items_count||0,frag_percent:s.frag_percent||0,resident_percent:s.resident_percent!=null?s.resident_percent:null,memory_used:s.memory_used||0,avg_item_size:s.avg_item_size||0,recs_in_mem:s.recs_in_mem||0,recs_on_disk:s.recs_on_disk||0,cache_hit_percent:s.cache_hit_percent||0,num_docs_pending:s.num_docs_pending||0,num_docs_queued:s.num_docs_queued||0,num_requests:s.num_requests||0,num_rows_returned:s.num_rows_returned||0,num_docs_indexed:s.num_docs_indexed||0,avg_scan_latency:s.avg_scan_latency||0,last_known_scan_time:s.last_known_scan_time||0,total_scan_duration:s.total_scan_duration||0,scan_bytes_read:s.scan_bytes_read||0})}return{indexer,flat}}
 
@@ -289,7 +289,72 @@ document.addEventListener('click',function(e){const th=e.target.closest('.stats-
 function loadSystemData(){const js=document.getElementById('system-json').value.trim();if(!js){setStatus('system-status','Paste JSON','error');return}try{globalSystemFlat=parseSystemJSON(js);populateFilters();renderTreemapView();setStatus('system-status',`✓ ${globalSystemFlat.length} indexes`,'success')}catch(e){setStatus('system-status',e.message,'error')}}
 function loadStatsData(){const nodes=document.querySelectorAll('#stats-nodes .stats-node-input'),nd=[];nodes.forEach(n=>{const name=n.querySelector('.node-name').value.trim()||'Node',json=n.querySelector('.node-stats-json').value.trim();if(json)nd.push({name,json})});if(!nd.length){setStatus('stats-status','Paste JSON','error');return}try{globalStatsFlat=nd.map(n=>{const r=parseStatsNodeJSON(n.json,currentMetric);return{nodeName:n.name,indexer:r.indexer,flat:r.flat}});populateFilters();renderStatsView();setStatus('stats-status',`✓ ${globalStatsFlat.reduce((s,n)=>s+n.flat.length,0)} indexes, ${globalStatsFlat.length} node(s)`,'success')}catch(e){setStatus('stats-status',e.message,'error')}}
 
-function renderTreemapView(){const c=document.getElementById('treemap-content');c.innerHTML='';activeCharts=activeCharts.filter(ch=>{try{ch.dispose()}catch{}return false});chartIndexMaps=[];if(!globalSystemFlat.length){c.innerHTML='<div class="text-center py-12 text-base-content/40">No data loaded</div>';return}const f=getFilters(),filtered=globalSystemFlat.filter(i=>matchFilter(i,f));if(!filtered.length){c.innerHTML='<div class="alert alert-warning"><span>No indexes match current filters</span></div>';return}c.innerHTML=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex justify-between items-center mb-2"><h3 class="font-bold text-sm">Cluster Indexes (system:indexes)</h3><div class="badge badge-ghost">${filtered.length} indexes</div></div><div id="ch-sys" class="chart-box"></div></div></div>`;makeTreemap('ch-sys',buildTree(filtered,false),false,null,'sys')}
+// ===== SYSTEM:INDEXES TABLE =====
+function buildCreateIndex(idx){
+  const bucket=idx.bucket,scope=idx.scope,collection=idx.collection;
+  let ks;
+  if(scope!=='_default'||collection!=='_default')ks=`\`${bucket}\`.\`${scope}\`.\`${collection}\``;
+  else ks=`\`${bucket}\``;
+  if(idx.isPrimary){
+    let stmt=`CREATE PRIMARY INDEX \`${idx.name}\` ON ${ks}`;
+    if(idx.replica>0)stmt+=` WITH {"num_replica":${idx.replica}}`;
+    return stmt;
+  }
+  const keys=(idx.keys||[]).join(', ');
+  let stmt=`CREATE INDEX \`${idx.name}\` ON ${ks}(${keys})`;
+  if(idx.condition)stmt+=` WHERE ${idx.condition}`;
+  if(idx.replica>0)stmt+=` WITH {"num_replica":${idx.replica}}`;
+  return stmt;
+}
+function copyCreateIndex(btn,text){navigator.clipboard.writeText(text).then(()=>{btn.textContent='copied';btn.classList.remove('btn-info');btn.classList.add('btn-success');setTimeout(()=>{btn.textContent='copy';btn.classList.remove('btn-success');btn.classList.add('btn-info')},2000)})}
+function isArrayIndex(keys){return(keys||[]).some(k=>/\bALL\b|\bARRAY\b|\bDISTINCT\b/i.test(k))}
+function hasDocTypeFirst(keys){if(!keys||!keys.length)return false;const first=keys[0].replace(/`/g,'').trim().toLowerCase();return['doctype','type','_class','class'].includes(first)}
+function getWhereFields(condition){if(!condition)return[];const matches=condition.match(/`?[a-zA-Z_][a-zA-Z0-9_.]*`?/g)||[];return matches.map(m=>m.replace(/`/g,'').toLowerCase())}
+function getIndexFields(keys){if(!keys)return[];const fields=[];const skip=['all','array','distinct','for','in','end','meta','id','xattrs','flatten_keys','least','ifmissing','object_pairs','null','desc','asc','include','missing','when','and','or','not','is','true','false','self'];keys.forEach(k=>{const cleaned=k.replace(/"[^"]*"/g,'').replace(/`/g,'');const ms=cleaned.match(/[a-zA-Z_][a-zA-Z0-9_.]*/g);if(ms)ms.forEach(m=>{if(!skip.includes(m.toLowerCase())&&m.length>1)fields.push(m.toLowerCase())})});return fields}
+function findWhereFieldsInIndex(keys,condition){if(!condition||!keys||!keys.length)return[];const wf=getWhereFields(condition),ixf=getIndexFields(keys);return[...new Set(wf.filter(f=>ixf.includes(f)))]}
+function findDuplicateKeys(keys){if(!keys)return[];const fields=getIndexFields(keys),seen={},dupes=[];fields.forEach(f=>{if(seen[f]&&!dupes.includes(f))dupes.push(f);seen[f]=true});return dupes}
+
+function makeSystemTable(filtered){
+  if(!filtered.length)return'';
+  let h=`<div class="card bg-base-100 shadow-sm mt-4"><div class="card-body p-3"><div class="flex justify-between items-center mb-2"><h3 class="font-bold text-sm">📋 Index Definitions Table</h3><div class="badge badge-ghost">${filtered.length} indexes</div></div><div class="stats-table-wrap"><table class="table table-xs table-pin-rows stats-table" id="tbl-sys"><thead><tr class="bg-base-200">
+<th data-col="name" class="cursor-pointer hover:bg-base-300" title="Index name">Index<span class="sa ml-1 text-[9px] text-base-content/30">▼</span></th>
+<th data-col="bucket" class="cursor-pointer hover:bg-base-300" title="Bucket">Bucket</th>
+<th data-col="scope" class="cursor-pointer hover:bg-base-300" title="Scope">Scope</th>
+<th data-col="collection" class="cursor-pointer hover:bg-base-300" title="Collection">Collection</th>
+<th data-col="isArray" class="cursor-pointer hover:bg-base-300" title="Is this an array index? (uses ALL, ARRAY, or DISTINCT)">Array Idx</th>
+<th data-col="docTypeFirst" class="cursor-pointer hover:bg-base-300" title="Is docType/type/_class/class the first key in the index?">DocType 1st</th>
+<th data-col="whereOverlap" class="cursor-pointer hover:bg-base-300" title="Fields that appear in both the WHERE clause and the index keys">WHERE∩Keys</th>
+<th data-col="dupeKeys" class="cursor-pointer hover:bg-base-300" title="Fields that appear more than once in the index keys">Dupe Keys</th>
+<th data-col="replica" class="cursor-pointer hover:bg-base-300" title="Number of replicas">Replicas</th>
+<th data-col="createStmt" class="cursor-pointer hover:bg-base-300" title="CREATE INDEX statement">CREATE INDEX</th>
+<th title="Copy index definition to clipboard">📋</th>
+</tr></thead><tbody>`;
+  filtered.forEach(f=>{
+    const isArr=isArrayIndex(f.keys);
+    const dtFirst=hasDocTypeFirst(f.keys);
+    const overlap=findWhereFieldsInIndex(f.keys,f.condition);
+    const dupes=findDuplicateKeys(f.keys);
+    const createStmt=buildCreateIndex(f);
+    const escaped=createStmt.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+    h+=`<tr class="hover:bg-warning/10">
+<td class="font-semibold max-w-[200px] truncate" title="${f.fullKey}" data-sort="${f.name}">${f.name}</td>
+<td data-sort="${f.bucket}">${f.bucket}</td>
+<td data-sort="${f.scope}">${f.scope}</td>
+<td data-sort="${f.collection}">${f.collection}</td>
+<td class="text-center" data-sort="${isArr?1:0}">${isArr?'<span class="badge badge-info badge-xs">YES</span>':'<span class="badge badge-ghost badge-xs">NO</span>'}</td>
+<td class="text-center" data-sort="${dtFirst?1:0}">${dtFirst?'<span class="badge badge-success badge-xs">YES</span>':'<span class="badge badge-warning badge-xs">NO</span>'}</td>
+<td data-sort="${overlap.length}">${overlap.length?'<span class="badge badge-warning badge-xs">'+overlap.join(', ')+'</span>':'<span class="badge badge-ghost badge-xs">—</span>'}</td>
+<td data-sort="${dupes.length}">${dupes.length?'<span class="badge badge-error badge-xs">'+dupes.join(', ')+'</span>':'<span class="badge badge-ghost badge-xs">—</span>'}</td>
+<td class="text-center font-mono text-xs" data-sort="${f.replica}">${f.replica}</td>
+<td class="font-mono text-[10px] max-w-[400px] truncate" title="${createStmt.replace(/"/g,'&quot;')}">${createStmt}</td>
+<td><button class="btn btn-info btn-xs text-white" onclick="copyCreateIndex(this,'${escaped}')">copy</button></td>
+</tr>`;
+  });
+  h+=`</tbody></table></div></div></div>`;
+  return h;
+}
+
+function renderTreemapView(){const c=document.getElementById('treemap-content');c.innerHTML='';activeCharts=activeCharts.filter(ch=>{try{ch.dispose()}catch{}return false});chartIndexMaps=[];if(!globalSystemFlat.length){c.innerHTML='<div class="text-center py-12 text-base-content/40">No data loaded</div>';return}const f=getFilters(),filtered=globalSystemFlat.filter(i=>matchFilter(i,f));if(!filtered.length){c.innerHTML='<div class="alert alert-warning"><span>No indexes match current filters</span></div>';return}c.innerHTML=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex justify-between items-center mb-2"><h3 class="font-bold text-sm">Cluster Indexes (system:indexes)</h3><div class="badge badge-ghost">${filtered.length} indexes</div></div><div id="ch-sys" class="chart-box"></div></div></div>`+makeSystemTable(filtered);setTimeout(()=>{makeTreemap('ch-sys',buildTree(filtered,false),false,null,'sys')},50)}
 
 function renderStatsView(){const c=document.getElementById('stats-content');c.innerHTML='';activeCharts=activeCharts.filter(ch=>{try{ch.dispose()}catch{}return false});chartIndexMaps=[];if(!globalStatsFlat.length){c.innerHTML='<div class="text-center py-12 text-base-content/40">No data loaded</div>';return}const f=getFilters();
 globalStatsFlat.forEach((node,i)=>{const filtered=node.flat.filter(x=>matchFilter(x,f)).map(x=>({...x,value:x[currentMetric]||x.disk_size||x.data_size||0}));if(!filtered.length)return;const totalDisk=filtered.reduce((s,x)=>s+(x.disk_size||0),0);const sec=document.createElement('div');sec.className='card bg-base-100 shadow-sm mb-4';
