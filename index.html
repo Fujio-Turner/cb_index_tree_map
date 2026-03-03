@@ -43,17 +43,17 @@
 </div>
 
 <!-- Main Tabs -->
-<div role="tablist" class="tabs tabs-bordered bg-base-100 px-6">
-  <a role="tab" class="tab tab-active" onclick="switchMain('treemap',this)">📊 Treemap</a>
-  <a role="tab" class="tab" onclick="switchMain('stats',this)">📈 Stats API</a>
-  <a role="tab" class="tab" onclick="switchMain('analysis',this)">🔍 Analysis</a>
+<div role="tablist" class="tabs tabs-lifted bg-base-100 px-6">
+  <a role="tab" class="tab tab-active [--tab-bg:#fef2f2] [--tab-border-color:#ef4444] text-error font-semibold" onclick="switchMain('treemap',this)">📊 Treemap</a>
+  <a role="tab" class="tab [--tab-bg:#eff6ff] [--tab-border-color:#3b82f6] text-blue-600 font-semibold" onclick="switchMain('stats',this)">📈 Stats API</a>
+  <a role="tab" class="tab [--tab-bg:#f0fdf4] [--tab-border-color:#22c55e] text-green-600 font-semibold" onclick="switchMain('analysis',this)">🔍 Analysis</a>
 </div>
 
 <!-- TAB 1: Treemap -->
 <div id="panel-treemap" class="tab-panel p-6">
   <div class="card bg-base-100 shadow-sm mb-4">
     <div class="card-body p-4">
-      <h3 class="card-title text-sm">Paste output of: <code class="text-error text-xs">SELECT *, meta() FROM system:indexes</code></h3>
+      <h3 class="card-title text-sm">Paste output of: <code class="text-error text-xs">SELECT *, meta() FROM system:indexes</code> <button class="btn btn-xs btn-info text-white" onclick="copyQuery(this,'SELECT *, meta() FROM system:indexes')">copy</button></h3>
       <textarea id="system-json" class="textarea textarea-bordered w-full h-24 font-mono text-xs" placeholder='[{"indexes":{...},"$1":{...}},...]' title="Paste the full JSON output from running SELECT *, meta() FROM system:indexes in Query Workbench or cbq shell"></textarea>
       <p class="text-xs text-base-content/40">Index structure only (no sizes). Combine with Stats API for full analysis.</p>
       <div class="flex gap-2 items-center flex-wrap">
@@ -70,6 +70,14 @@
 <div id="panel-stats" class="tab-panel p-6 hidden">
   <div class="card bg-base-100 shadow-sm mb-4">
     <div class="card-body p-4">
+      <div class="flex items-center gap-2 mb-2 flex-wrap">
+        <code class="text-xs text-error" id="stats-curl-cmd">curl -u &lt;username&gt;:&lt;password&gt; "http://&lt;index-node-hostname&gt;:9102/api/v1/stats?pretty=true"</code>
+        <button class="btn btn-xs btn-info text-white" id="stats-copy-btn" onclick="copyStatsCurl(this)">copy</button>
+        <label class="flex items-center gap-1 cursor-pointer ml-2">
+          <input type="checkbox" class="checkbox checkbox-xs checkbox-info" id="stats-secure-cb" onchange="toggleSecureCurl()">
+          <span class="text-xs font-semibold">Secure</span>
+        </label>
+      </div>
       <div id="stats-nodes">
         <div class="stats-node-input mb-2">
           <div class="flex items-center gap-2 mb-1">
@@ -137,6 +145,11 @@ function switchMetric(el){
   currentMetric=el.dataset.metric;
   renderStatsView();
 }
+
+// ===== COPY & SECURE TOGGLE =====
+function copyQuery(btn,text){navigator.clipboard.writeText(text).then(()=>{btn.textContent='copied';btn.classList.remove('btn-info');btn.classList.add('btn-success');setTimeout(()=>{btn.textContent='copy';btn.classList.remove('btn-success');btn.classList.add('btn-info')},2000)})}
+function copyStatsCurl(btn){const el=document.getElementById('stats-curl-cmd');const text=el.textContent;navigator.clipboard.writeText(text).then(()=>{btn.textContent='copied';btn.classList.remove('btn-info');btn.classList.add('btn-success');setTimeout(()=>{btn.textContent='copy';btn.classList.remove('btn-success');btn.classList.add('btn-info')},2000)})}
+function toggleSecureCurl(){const secure=document.getElementById('stats-secure-cb').checked;const el=document.getElementById('stats-curl-cmd');if(secure){el.innerHTML='curl -u &lt;username&gt;:&lt;password&gt; "https://&lt;index-node-hostname&gt;:19102/api/v1/stats?pretty=true"'}else{el.innerHTML='curl -u &lt;username&gt;:&lt;password&gt; "http://&lt;index-node-hostname&gt;:9102/api/v1/stats?pretty=true"'}}
 
 // ===== UTILS =====
 function fmt(b){if(b==null||b===0)return'0 B';const k=1024,s=['B','KB','MB','GB','TB'],i=Math.floor(Math.log(Math.abs(b))/Math.log(k));return parseFloat((b/Math.pow(k,i)).toFixed(2))+' '+s[i]}
