@@ -183,9 +183,36 @@ function rankClass(i){return i===0?'bg-warning/30':i===1?'bg-base-200':i===2?'bg
 // ===== FILTERS =====
 function getFilters(){return{bucket:document.getElementById('f-bucket').value,scope:document.getElementById('f-scope').value,collection:document.getElementById('f-collection').value,index:document.getElementById('f-index').value}}
 function matchFilter(item,f){return(!f.bucket||item.bucket===f.bucket)&&(!f.scope||item.scope===f.scope)&&(!f.collection||item.collection===f.collection)&&(!f.index||item.name===f.index)}
-function populateFilters(){const all=[...globalSystemFlat,...globalStatsFlat.flatMap(n=>n.flat)];if(!all.length){document.getElementById('filter-bar').classList.add('hidden');return}document.getElementById('filter-bar').classList.remove('hidden');['bucket','scope','collection','index'].forEach(k=>{const key=k==='index'?'name':k;const el=document.getElementById('f-'+k),cur=el.value,vals=[...new Set(all.map(i=>i[key]))].sort();el.innerHTML=`<option value="">All ${k==='index'?'Indexes':k+'s'}</option>`+vals.map(v=>`<option${v===cur?' selected':''}>${v}</option>`).join('')})}
+function populateFilters(){const all=[...globalSystemFlat,...globalStatsFlat.flatMap(n=>n.flat)];if(!all.length){document.getElementById('filter-bar').classList.add('hidden');return}document.getElementById('filter-bar').classList.remove('hidden');cascadeFilters()}
+function cascadeFilters(){
+  const all=[...globalSystemFlat,...globalStatsFlat.flatMap(n=>n.flat)];
+  const fb=document.getElementById('f-bucket'),fs=document.getElementById('f-scope'),fc=document.getElementById('f-collection'),fi=document.getElementById('f-index');
+  const curB=fb.value,curS=fs.value,curC=fc.value,curI=fi.value;
+  // Buckets: always show all
+  const buckets=[...new Set(all.map(i=>i.bucket))].sort();
+  fb.innerHTML=`<option value="">All Buckets (${buckets.length})</option>`+buckets.map(v=>`<option${v===curB?' selected':''}>${v}</option>`).join('');
+  // Scopes: filtered by selected bucket
+  const scopePool=curB?all.filter(i=>i.bucket===curB):all;
+  const scopes=[...new Set(scopePool.map(i=>i.scope))].sort();
+  const validS=scopes.includes(curS)?curS:'';
+  fs.innerHTML=`<option value="">All Scopes (${scopes.length})</option>`+scopes.map(v=>`<option${v===validS?' selected':''}>${v}</option>`).join('');
+  // Collections: filtered by selected bucket + scope
+  const collPool=validS?scopePool.filter(i=>i.scope===validS):scopePool;
+  const collections=[...new Set(collPool.map(i=>i.collection))].sort();
+  const validC=collections.includes(curC)?curC:'';
+  fc.innerHTML=`<option value="">All Collections (${collections.length})</option>`+collections.map(v=>`<option${v===validC?' selected':''}>${v}</option>`).join('');
+  // Indexes: filtered by bucket + scope + collection
+  const idxPool=validC?collPool.filter(i=>i.collection===validC):collPool;
+  const indexes=[...new Set(idxPool.map(i=>i.name))].sort();
+  const validI=indexes.includes(curI)?curI:'';
+  fi.innerHTML=`<option value="">All Indexes (${indexes.length})</option>`+indexes.map(v=>`<option${v===validI?' selected':''}>${v}</option>`).join('');
+  // Reset values that are no longer valid
+  if(curS!==validS)fs.value=validS;
+  if(curC!==validC)fc.value=validC;
+  if(curI!==validI)fi.value=validI;
+}
 function resetFilters(){['f-bucket','f-scope','f-collection','f-index'].forEach(id=>document.getElementById(id).value='');applyFilters()}
-function applyFilters(){renderTreemapView();renderStatsView();if(!document.getElementById('panel-analysis').classList.contains('hidden'))renderAnalysis();const f=getFilters();const a=[f.bucket,f.scope,f.collection,f.index].filter(Boolean).length;document.getElementById('filter-count').textContent=a?`(${a} active)`:''}
+function applyFilters(){cascadeFilters();renderTreemapView();renderStatsView();if(!document.getElementById('panel-analysis').classList.contains('hidden'))renderAnalysis();const f=getFilters();const a=[f.bucket,f.scope,f.collection,f.index].filter(Boolean).length;document.getElementById('filter-count').textContent=a?`(${a} active)`:''}
 
 function addStatsNode(){statsNodeCount++;const c=document.getElementById('stats-nodes'),d=document.createElement('div');d.className='stats-node-input mb-2';d.innerHTML=`<div class="flex items-center gap-2 mb-1"><span class="text-xs font-bold uppercase text-base-content/50">Node ${statsNodeCount}:</span><input type="text" class="input input-bordered input-xs w-48 node-name" value="Index Node ${statsNodeCount}"><button class="btn btn-ghost btn-xs text-error" onclick="this.closest('.stats-node-input').remove()">✕</button></div><textarea class="textarea textarea-bordered w-full h-24 font-mono text-xs node-stats-json" placeholder='Paste stats JSON...'></textarea>`;c.appendChild(d)}
 
@@ -449,11 +476,13 @@ async function autoLoad(){
   if(!files.length)return;
   updateSavedCount();
 
+  let hasSystem=false,hasStats=false;
+
   // Load system-indexes
   const sysFile=files.find(f=>f.name==='system-indexes.json');
   if(sysFile){
     const data=await apiLoad('system-indexes');
-    if(data){document.getElementById('system-json').value=JSON.stringify(data,null,2);loadSystemData()}
+    if(data){document.getElementById('system-json').value=JSON.stringify(data,null,2);loadSystemData();hasSystem=true}
   }
 
   // Load stats nodes
@@ -469,7 +498,24 @@ async function autoLoad(){
       inputDiv.querySelector('.node-name').value=wrapped.nodeName||statsFiles[i].name;
       inputDiv.querySelector('.node-stats-json').value=JSON.stringify(wrapped.data,null,2);
     }
-    loadStatsData();
+    loadStatsData();hasStats=true;
+  }
+
+  // After all data is loaded, re-render the active tab's view and resize charts
+  // (loadSystemData/loadStatsData each dispose all activeCharts, so re-render the visible tab last)
+  if(hasSystem||hasStats){
+    requestAnimationFrame(()=>{
+      setTimeout(()=>{
+        // Re-render whichever tab is currently visible so its charts exist
+        const treemapVisible=!document.getElementById('panel-treemap').classList.contains('hidden');
+        const statsVisible=!document.getElementById('panel-stats').classList.contains('hidden');
+        const analysisVisible=!document.getElementById('panel-analysis').classList.contains('hidden');
+        if(treemapVisible&&hasSystem)renderTreemapView();
+        else if(statsVisible&&hasStats)renderStatsView();
+        else if(analysisVisible)renderAnalysis();
+        activeCharts.forEach(c=>c.resize());
+      },150);
+    });
   }
 }
 window.addEventListener('DOMContentLoaded',autoLoad);
