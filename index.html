@@ -23,7 +23,7 @@
   <div class="flex-1 gap-3">
     <span class="text-xl font-bold text-error">🗺️ CB Index Treemap</span>
     <span class="text-xs text-base-content/50 hidden sm:inline">Visualize & analyze GSI index sizes, performance & capacity</span>
-    <span class="badge badge-ghost badge-sm text-[10px]">v1.0.2</span>
+    <span class="badge badge-ghost badge-sm text-[10px]">v1.0.3</span>
   </div>
   <div class="flex-none">
     <button class="btn btn-ghost btn-sm gap-1" onclick="openFileManager()">💾 <span id="saved-count" class="badge badge-sm badge-ghost">0</span></button>
@@ -34,6 +34,11 @@
 <div id="filter-bar" class="bg-base-100 border-b border-base-300 px-6 py-2 hidden">
   <div class="flex items-center gap-4 flex-wrap">
     <span class="text-xs font-bold uppercase text-base-content/50">Filters:</span>
+    <details id="f-node-dropdown" class="dropdown">
+      <summary class="btn btn-xs select select-bordered w-44 flex items-center justify-between" title="Filter by index node(s)"><span id="f-node-label">All Nodes</span></summary>
+      <ul id="f-node-list" class="menu dropdown-content bg-base-100 rounded-box z-50 w-52 p-2 shadow-sm max-h-60 overflow-y-auto">
+      </ul>
+    </details>
     <select id="f-bucket" class="select select-bordered select-xs w-40" onchange="applyFilters()" title="Filter by Couchbase bucket"><option value="">All Buckets</option></select>
     <select id="f-scope" class="select select-bordered select-xs w-40" onchange="applyFilters()" title="Filter by scope within a bucket"><option value="">All Scopes</option></select>
     <select id="f-collection" class="select select-bordered select-xs w-40" onchange="applyFilters()" title="Filter by collection within a scope"><option value="">All Collections</option></select>
@@ -143,18 +148,31 @@
 
 <script>
 // ===== GLOBAL STATE =====
-let globalSystemFlat=[],globalStatsFlat=[],currentMetric='disk_size',activeCharts=[],chartIndexMaps=[],statsNodeCount=1,insightData={};
+let globalSystemFlat=[],globalStatsFlat=[],globalReplicaMap={},currentMetric='disk_size',activeCharts=[],chartIndexMaps=[],statsNodeCount=1,insightData={};
 
-function showInsightModal(key){
+function nodeCountBadges(items){
+  const counts={};
+  items.forEach(x=>{if(x._nodeName){counts[x._nodeName]=(counts[x._nodeName]||0)+1}});
+  const nodeNames=[...new Set(globalStatsFlat.map(n=>n.nodeName))];
+  return nodeNames.filter(n=>counts[n]).map(n=>{
+    const ni=nodeNames.indexOf(n)+1;
+    const bg=replicaColor(ni);
+    return`<span class="tooltip tooltip-bottom" data-tip="${n}"><span class="badge badge-sm text-white font-bold" style="background:${bg};border-color:${bg}">${counts[n]}</span></span>`;
+  }).join(' ');
+}
+function showInsightModal(key,limit){
   const d=insightData[key];if(!d)return;
+  const max=limit||100;
   const modal=document.getElementById('insight-modal');
-  document.getElementById('insight-modal-title').textContent=d.title;
+  const titleEl=document.getElementById('insight-modal-title');
+  const showing=Math.min(d.items.length,max);
+  titleEl.innerHTML=d.title+' '+nodeCountBadges(d.items.slice(0,max));
   document.getElementById('insight-modal-desc').textContent=d.desc;
-  const items=d.items.slice(0,100);
-  let h=`<table class="table table-xs table-zebra w-full"><thead><tr class="bg-base-200"><th class="w-10">#</th><th>Index</th><th>Bucket</th><th>Scope</th><th class="text-right">${d.colLabel}</th></tr></thead><tbody>`;
-  items.forEach((x,i)=>{h+=`<tr><td class="font-mono text-xs font-bold">${i+1}</td><td class="font-semibold">${x.name}</td><td>${x.bucket}</td><td>${x.scope}</td><td class="font-mono text-xs text-right">${d.fmtVal(x)}</td></tr>`});
+  const items=d.items.slice(0,max);
+  let h=`<table class="table table-xs table-zebra w-full"><thead><tr class="bg-base-200"><th class="w-10">#</th><th>Index</th><th>Node</th><th>Bucket</th><th>Scope</th><th class="text-right">${d.colLabel}</th></tr></thead><tbody>`;
+  items.forEach((x,i)=>{h+=`<tr><td class="font-mono text-xs font-bold">${i+1}</td><td class="font-semibold">${x.name}${x._replicaTotal>1?replicaBadge(x):''}</td><td class="text-xs">${x._nodeName||'—'}</td><td>${x.bucket}</td><td>${x.scope}</td><td class="font-mono text-xs text-right">${d.fmtVal(x)}</td></tr>`});
   h+='</tbody></table>';
-  if(d.items.length>100)h+=`<p class="text-xs text-base-content/40 mt-2 text-center">Showing top 100 of ${d.items.length}</p>`;
+  if(d.items.length>max)h+=`<p class="text-xs text-base-content/40 mt-2 text-center">Showing top ${max} of ${d.items.length}</p>`;
   document.getElementById('insight-modal-body').innerHTML=h;
   modal.showModal();
 }
@@ -212,11 +230,27 @@ function pendingBadge(n){if(!n||n===0)return'<span class="badge badge-success ba
 function rankClass(i){return i===0?'bg-warning/30':i===1?'bg-base-200':i===2?'bg-error/10':''}
 
 // ===== FILTERS =====
-function getFilters(){return{bucket:document.getElementById('f-bucket').value,scope:document.getElementById('f-scope').value,collection:document.getElementById('f-collection').value,index:document.getElementById('f-index').value}}
+function getSelectedNodes(){const cbs=document.querySelectorAll('#f-node-list input[type=checkbox]:not(#f-node-all)');const checked=[...cbs].filter(c=>c.checked).map(c=>c.value);const all=document.getElementById('f-node-all');if(!cbs.length||!all||(all&&all.checked))return[];return checked}
+function getFilters(){return{nodes:getSelectedNodes(),bucket:document.getElementById('f-bucket').value,scope:document.getElementById('f-scope').value,collection:document.getElementById('f-collection').value,index:document.getElementById('f-index').value}}
 function matchFilter(item,f){return(!f.bucket||item.bucket===f.bucket)&&(!f.scope||item.scope===f.scope)&&(!f.collection||item.collection===f.collection)&&(!f.index||item.name===f.index)}
-function populateFilters(){const all=[...globalSystemFlat,...globalStatsFlat.flatMap(n=>n.flat)];if(!all.length){document.getElementById('filter-bar').classList.add('hidden');return}document.getElementById('filter-bar').classList.remove('hidden');cascadeFilters()}
+function matchNodeFilter(nodeName,f){return!f.nodes.length||f.nodes.includes(nodeName)}
+function populateFilters(){const all=[...globalSystemFlat,...globalStatsFlat.flatMap(n=>n.flat)];if(!all.length){document.getElementById('filter-bar').classList.add('hidden');return}document.getElementById('filter-bar').classList.remove('hidden');populateNodeFilter();cascadeFilters()}
+function populateNodeFilter(){
+  const nodeNames=[...new Set(globalStatsFlat.map(n=>n.nodeName))].sort();
+  const list=document.getElementById('f-node-list'),label=document.getElementById('f-node-label');
+  const dropdown=document.getElementById('f-node-dropdown');
+  if(!nodeNames.length){dropdown.classList.add('hidden');return}
+  dropdown.classList.remove('hidden');
+  const prev=getSelectedNodes();
+  list.innerHTML=`<li><label class="flex items-center gap-2 px-1 py-0.5 cursor-pointer"><input type="checkbox" id="f-node-all" class="checkbox checkbox-xs" checked onchange="toggleAllNodes(this)"><span class="text-xs font-semibold">All Nodes (${nodeNames.length})</span></label></li><li class="divider my-0"></li>`+nodeNames.map(n=>`<li><label class="flex items-center gap-2 px-1 py-0.5 cursor-pointer"><input type="checkbox" class="checkbox checkbox-xs" value="${n}" checked onchange="onNodeCheckChange()" ${prev.length&&!prev.includes(n)?'':'checked'}><span class="text-xs">${n}</span></label></li>`).join('');
+  updateNodeLabel();
+}
+function toggleAllNodes(el){const cbs=document.querySelectorAll('#f-node-list input[type=checkbox]:not(#f-node-all)');cbs.forEach(c=>c.checked=el.checked);updateNodeLabel();applyFilters()}
+function onNodeCheckChange(){const cbs=[...document.querySelectorAll('#f-node-list input[type=checkbox]:not(#f-node-all)')];const allCb=document.getElementById('f-node-all');allCb.checked=cbs.every(c=>c.checked);updateNodeLabel();applyFilters()}
+function updateNodeLabel(){const cbs=[...document.querySelectorAll('#f-node-list input[type=checkbox]:not(#f-node-all)')];const checked=cbs.filter(c=>c.checked);const label=document.getElementById('f-node-label');if(!cbs.length||checked.length===cbs.length)label.textContent='All Nodes';else if(checked.length===0)label.textContent='No Nodes';else if(checked.length===1)label.textContent=checked[0].value;else label.textContent=checked.length+' Nodes'}
 function cascadeFilters(){
-  const all=[...globalSystemFlat,...globalStatsFlat.flatMap(n=>n.flat)];
+  const selectedNodes=getSelectedNodes();
+  const all=[...globalSystemFlat,...globalStatsFlat.filter(n=>!selectedNodes.length||selectedNodes.includes(n.nodeName)).flatMap(n=>n.flat)];
   const fb=document.getElementById('f-bucket'),fs=document.getElementById('f-scope'),fc=document.getElementById('f-collection'),fi=document.getElementById('f-index');
   const curB=fb.value,curS=fs.value,curC=fc.value,curI=fi.value;
   // Buckets: always show all
@@ -242,8 +276,8 @@ function cascadeFilters(){
   if(curC!==validC)fc.value=validC;
   if(curI!==validI)fi.value=validI;
 }
-function resetFilters(){['f-bucket','f-scope','f-collection','f-index'].forEach(id=>document.getElementById(id).value='');applyFilters()}
-function applyFilters(){cascadeFilters();renderTreemapView();renderStatsView();if(!document.getElementById('panel-analysis').classList.contains('hidden'))renderAnalysis();const f=getFilters();const a=[f.bucket,f.scope,f.collection,f.index].filter(Boolean).length;document.getElementById('filter-count').textContent=a?`(${a} active)`:''}
+function resetFilters(){['f-bucket','f-scope','f-collection','f-index'].forEach(id=>document.getElementById(id).value='');const allCb=document.getElementById('f-node-all');if(allCb){allCb.checked=true;toggleAllNodes(allCb)}applyFilters()}
+function applyFilters(){cascadeFilters();renderTreemapView();renderStatsView();if(!document.getElementById('panel-analysis').classList.contains('hidden'))renderAnalysis();const f=getFilters();let a=[f.bucket,f.scope,f.collection,f.index].filter(Boolean).length;if(f.nodes.length)a++;document.getElementById('filter-count').textContent=a?`(${a} active)`:''}
 
 function addStatsNode(){statsNodeCount++;const c=document.getElementById('stats-nodes'),d=document.createElement('div');d.className='stats-node-input mb-2';d.innerHTML=`<div class="flex items-center gap-2 mb-1"><span class="text-xs font-bold uppercase text-base-content/50">Node ${statsNodeCount}:</span><input type="text" class="input input-bordered input-xs w-48 node-name" value="Index Node ${statsNodeCount}"><button class="btn btn-ghost btn-xs text-base-content/50 node-toggle" onclick="toggleNodeTextarea(this)" title="Show/hide JSON">▼</button><button class="btn btn-ghost btn-xs text-error" onclick="this.closest('.stats-node-input').remove()">✕</button></div><textarea class="textarea textarea-bordered w-full h-24 font-mono text-xs node-stats-json" placeholder='Paste stats JSON...'></textarea>`;c.appendChild(d)}
 
@@ -260,13 +294,53 @@ function parseSystemJSON(js){let d;try{d=JSON.parse(js)}catch{try{d=JSON.parse('
 
 function parseStatsNodeJSON(js,metric){let d;try{d=JSON.parse(js)}catch{throw new Error('Invalid JSON')}let indexer=null;const flat=[];for(const[key,s]of Object.entries(d)){if(key==='indexer'){indexer=s;continue}const p=key.split(':');let bucket,scope,collection,name;if(p.length===2){bucket=p[0];scope='_default';collection='_default';name=p[1]}else if(p.length===4){bucket=p[0];scope=p[1];collection=p[2];name=p[3]}else{bucket=p[0];scope=p.length>2?p[1]:'_default';collection=p.length>3?p[2]:'_default';name=p[p.length-1]}const ds=s.disk_size||0,da=s.data_size||0;flat.push({fullKey:key,bucket,scope,collection,name,value:s[metric]||ds||da||0,disk_size:ds,data_size:da,bloat_ratio:da>0?ds/da:0,items_count:s.items_count||0,frag_percent:s.frag_percent||0,resident_percent:s.resident_percent!=null?s.resident_percent:null,memory_used:s.memory_used||0,avg_item_size:s.avg_item_size||0,recs_in_mem:s.recs_in_mem||0,recs_on_disk:s.recs_on_disk||0,cache_hit_percent:s.cache_hit_percent||0,num_docs_pending:s.num_docs_pending||0,num_docs_queued:s.num_docs_queued||0,num_requests:s.num_requests||0,num_rows_returned:s.num_rows_returned||0,num_docs_indexed:s.num_docs_indexed||0,avg_scan_latency:s.avg_scan_latency||0,last_known_scan_time:s.last_known_scan_time||0,total_scan_duration:s.total_scan_duration||0,scan_bytes_read:s.scan_bytes_read||0})}return{indexer,flat}}
 
+// ===== REPLICA MAP =====
+const REPLICA_COLORS=['#3b82f6','#22c55e','#f59e0b','#ef4444','#8b5cf6','#ec4899','#14b8a6','#f97316','#06b6d4','#84cc16'];
+function replicaColor(i){return REPLICA_COLORS[(i-1)%REPLICA_COLORS.length]}
+function buildReplicaMap(){
+  globalReplicaMap={};
+  globalStatsFlat.forEach(node=>{
+    node.flat.forEach(idx=>{
+      if(!globalReplicaMap[idx.fullKey])globalReplicaMap[idx.fullKey]=[];
+      globalReplicaMap[idx.fullKey].push(node.nodeName);
+    });
+  });
+  globalStatsFlat.forEach(node=>{
+    node.flat.forEach(idx=>{
+      const nodes=globalReplicaMap[idx.fullKey]||[];
+      idx._replicaTotal=nodes.length;
+      idx._replicaIndex=nodes.indexOf(node.nodeName)+1;
+      idx._replicaNodes=nodes;
+      idx._nodeName=node.nodeName;
+    });
+  });
+}
+function replicaBadgeOne(ri,total,tipText){
+  const bg=replicaColor(ri);
+  return`<span class="tooltip tooltip-bottom" data-tip="${tipText}"><span class="badge badge-xs cursor-help text-white font-bold" style="background:${bg};border-color:${bg}">${ri}/${total}</span></span>`;
+}
+function replicaBadge(idx){
+  if(!idx._replicaTotal||idx._replicaTotal<=1)return'';
+  return' '+replicaBadgeOne(idx._replicaIndex,idx._replicaTotal,idx._nodeName);
+}
+function replicaBadgeSystem(idx){
+  if(!idx.replica||idx.replica<1)return'<span class="badge badge-ghost badge-xs">0</span>';
+  const statsKey=`${idx.bucket}:${idx.scope!=='_default'||idx.collection!=='_default'?idx.scope+':'+idx.collection+':':''}${idx.name}`;
+  const altKey=`${idx.bucket}:${idx.scope}:${idx.collection}:${idx.name}`;
+  const nodes=globalReplicaMap[altKey]||globalReplicaMap[statsKey]||[];
+  if(nodes.length>1){
+    return nodes.map((n,i)=>replicaBadgeOne(i+1,nodes.length,n)).join(' ');
+  }
+  return`<span class="font-mono">${idx.replica}</span>`;
+}
+
 function buildTree(fl,useVal){const tree={};fl.forEach(f=>{if(!tree[f.bucket])tree[f.bucket]={};if(!tree[f.bucket][f.scope])tree[f.bucket][f.scope]={};if(!tree[f.bucket][f.scope][f.collection])tree[f.bucket][f.scope][f.collection]={};tree[f.bucket][f.scope][f.collection][f.name]=f});const out=[];for(const[b,sc]of Object.entries(tree)){const scs=[];for(const[s,co]of Object.entries(sc)){const cos=[];for(const[c,ix]of Object.entries(co)){const is=[];for(const[n,info]of Object.entries(ix))is.push({name:n,value:useVal?(info.value||1):1,_meta:info,_fullPath:`${b}:${s}:${c}:${n}`});cos.push({name:c,children:is})}scs.push({name:s,children:cos})}out.push({name:b,children:scs})}return out}
 
 // ===== CHARTS =====
 function getLevels(){return[{itemStyle:{borderWidth:0,gapWidth:5},upperLabel:{show:false}},{itemStyle:{gapWidth:2,borderColor:'#ccc'},upperLabel:{show:true,color:'#333'}},{colorSaturation:[.3,.5],itemStyle:{gapWidth:1,borderColor:'#ddd'},upperLabel:{show:true,color:'#333'}},{colorSaturation:[.3,.6],itemStyle:{gapWidth:1,borderColor:'#eee'}}]}
 
 function makeTreemap(elId,data,hasSizes,indexer,nIdx){const el=document.getElementById(elId);if(!el)return;const ch=echarts.init(el);activeCharts.push(ch);
-ch.setOption({title:{text:indexer?`State: ${indexer.indexer_state||'—'} · Mem: ${fmt(indexer.memory_used||0)} / ${fmt(indexer.memory_quota||0)}`:(hasSizes?'':'Equal-sized (no size data)'),left:'center',textStyle:{color:'#888',fontSize:11}},tooltip:{formatter:function(info){const tp=[];for(let i=1;i<info.treePathInfo.length;i++)tp.push(info.treePathInfo[i].name);const m=info.data._meta||{};let h='<b>'+tp.join(' → ')+'</b><br>';if(hasSizes)h+=`Disk: ${fmt(m.disk_size)} · Data: ${fmt(m.data_size)}<br>Frag: ${m.frag_percent}% · Cache: ${m.cache_hit_percent}%<br>Items: ${fmtN(m.items_count)} · Latency: ${fmtNs(m.avg_scan_latency)}`;else h+=`Type: ${m.type||'—'} · Keys: ${m.keysStr||'—'}`;return h}},series:[{type:'treemap',visibleMin:200,label:{show:true,formatter:p=>hasSizes&&!p.data.children?p.name+'\n'+fmt(p.value):p.name},upperLabel:{show:true,height:20,color:'#333',backgroundColor:'rgba(255,255,255,.7)'},itemStyle:{borderColor:'#fff'},levels:getLevels(),data,breadcrumb:{itemStyle:{color:'#eee',borderColor:'#ccc',textStyle:{color:'#333'}}}}]});
+ch.setOption({title:{text:indexer?`State: ${indexer.indexer_state||'—'} · Mem: ${fmt(indexer.memory_used||0)} / ${fmt(indexer.memory_quota||0)}`:(hasSizes?'':'Equal-sized (no size data)'),left:'center',textStyle:{color:'#888',fontSize:11}},tooltip:{formatter:function(info){const tp=[];for(let i=1;i<info.treePathInfo.length;i++)tp.push(info.treePathInfo[i].name);const m=info.data._meta||{};let h='<b>'+tp.join(' → ')+'</b><br>';if(hasSizes){h+=`Disk: ${fmt(m.disk_size)} · Data: ${fmt(m.data_size)}<br>Frag: ${m.frag_percent}% · Cache: ${m.cache_hit_percent}%<br>Items: ${fmtN(m.items_count)} · Latency: ${fmtNs(m.avg_scan_latency)}`;if(m._replicaTotal>1)h+=`<br>Replica: ${m._replicaIndex}/${m._replicaTotal} · Node: ${m._nodeName}`}else h+=`Type: ${m.type||'—'} · Keys: ${m.keysStr||'—'}`;return h}},series:[{type:'treemap',visibleMin:200,label:{show:true,formatter:p=>hasSizes&&!p.data.children?p.name+'\n'+fmt(p.value):p.name},upperLabel:{show:true,height:20,color:'#333',backgroundColor:'rgba(255,255,255,.7)'},itemStyle:{borderColor:'#fff'},levels:getLevels(),data,breadcrumb:{itemStyle:{color:'#eee',borderColor:'#ccc',textStyle:{color:'#333'}}}}]});
 ch.on('click',p=>{if(!p.data._fullPath)return;const tbl=document.getElementById('tbl-'+nIdx);if(!tbl)return;tbl.querySelectorAll('tr.highlighted').forEach(r=>r.classList.remove('highlighted'));const row=tbl.querySelector(`tr[data-key="${CSS.escape(p.data._fullPath)}"]`);if(row){row.classList.add('highlighted');row.scrollIntoView({behavior:'smooth',block:'center'})}});
 chartIndexMaps.push({nodeIdx:nIdx,chart:ch,data})}
 
@@ -286,6 +360,7 @@ function onRowClick(row,nIdx){const key=row.dataset.key;row.closest('table').que
 function makeTable(nIdx,fl){if(!fl.length)return'';fl.sort((a,b)=>(b.disk_size||0)-(a.disk_size||0));let tD=0,tDa=0,tI=0,tM=0;fl.forEach(f=>{tD+=f.disk_size||0;tDa+=f.data_size||0;tI+=f.items_count||0;tM+=f.memory_used||0});const mx=Math.max(...fl.map(f=>f.disk_size||0),1);
 let h=`<div class="stats-table-wrap"><table class="table table-xs table-pin-rows stats-table" id="tbl-${nIdx}"><thead><tr class="bg-base-200">
 <th data-col="name" class="cursor-pointer hover:bg-base-300" title="GSI index name">Index<span class="sa ml-1 text-[9px] text-base-content/30">▼</span></th>
+<th data-col="replica" class="cursor-pointer hover:bg-base-300" title="Which replica copy this is (N/Total). Hover to see all node placements">Replica</th>
 <th data-col="bucket" class="cursor-pointer hover:bg-base-300" title="Couchbase bucket this index belongs to">Bucket</th>
 <th data-col="scope" class="cursor-pointer hover:bg-base-300" title="Scope within the bucket">Scope</th>
 <th data-col="collection" class="cursor-pointer hover:bg-base-300" title="Collection within the scope">Coll</th>
@@ -305,6 +380,7 @@ let h=`<div class="stats-table-wrap"><table class="table table-xs table-pin-rows
 fl.forEach(f=>{const bw=Math.max(2,Math.round((f.disk_size||0)/mx*50));const fp=`${f.bucket}:${f.scope}:${f.collection}:${f.name}`;
 h+=`<tr data-key="${fp}" class="hover:bg-warning/10 cursor-pointer" onclick="onRowClick(this,'${nIdx}')">
 <td class="font-semibold max-w-[200px] truncate" title="${f.fullKey}" data-sort="${f.name}">${f.name}</td>
+<td class="text-center" data-sort="${f._replicaTotal||0}">${f._replicaTotal>1?replicaBadge(f):'<span class="badge badge-ghost badge-xs">—</span>'}</td>
 <td data-sort="${f.bucket}">${f.bucket}</td><td data-sort="${f.scope}">${f.scope}</td><td data-sort="${f.collection}">${f.collection}</td>
 <td class="font-mono text-xs text-right" data-sort="${f.disk_size||0}"><span class="inline-block h-2 rounded bg-info align-middle mr-1" style="width:${bw}px"></span>${fmt(f.disk_size)}</td>
 <td class="font-mono text-xs text-right" data-sort="${f.data_size||0}">${fmt(f.data_size)}</td>
@@ -318,7 +394,7 @@ h+=`<tr data-key="${fp}" class="hover:bg-warning/10 cursor-pointer" onclick="onR
 <td class="font-mono text-xs text-right" data-sort="${f.num_docs_pending||0}">${fmtN(f.num_docs_pending||0)}</td>
 <td class="font-mono text-xs text-right" data-sort="${f.num_requests||0}">${fmtN(f.num_requests)}</td>
 <td class="font-mono text-xs text-right" data-sort="${f.last_known_scan_time||0}">${fmtScanTime(f.last_known_scan_time)}</td></tr>`});
-h+=`<tr class="font-bold bg-base-200 border-t-2 border-base-300"><td>TOTAL (${fl.length})</td><td></td><td></td><td></td>
+h+=`<tr class="font-bold bg-base-200 border-t-2 border-base-300"><td>TOTAL (${fl.length})</td><td></td><td></td><td></td><td></td>
 <td class="font-mono text-xs text-right">${fmt(tD)}</td><td class="font-mono text-xs text-right">${fmt(tDa)}</td>
 <td class="font-mono text-xs text-right">${tDa>0?(tD/tDa).toFixed(1)+'x':''}</td><td></td>
 <td class="font-mono text-xs text-right">${fmtN(tI)}</td><td></td><td class="font-mono text-xs text-right">${fmt(tM)}</td>
@@ -330,7 +406,7 @@ document.addEventListener('click',function(e){const th=e.target.closest('.stats-
 
 // ===== LOAD / RENDER =====
 function loadSystemData(){const js=document.getElementById('system-json').value.trim();if(!js){setStatus('system-status','Paste JSON','error');return}try{globalSystemFlat=parseSystemJSON(js);populateFilters();renderTreemapView();setStatus('system-status',`✓ ${globalSystemFlat.length} indexes`,'success');const tb=document.getElementById('system-json-toggle');if(tb)toggleSystemTextarea(tb)}catch(e){setStatus('system-status',e.message,'error')}}
-function loadStatsData(){const nodes=document.querySelectorAll('#stats-nodes .stats-node-input'),nd=[];nodes.forEach(n=>{const name=n.querySelector('.node-name').value.trim()||'Node',json=n.querySelector('.node-stats-json').value.trim();if(json)nd.push({name,json})});if(!nd.length){setStatus('stats-status','Paste JSON','error');return}try{globalStatsFlat=nd.map(n=>{const r=parseStatsNodeJSON(n.json,currentMetric);return{nodeName:n.name,indexer:r.indexer,flat:r.flat}});populateFilters();renderStatsView();setStatus('stats-status',`✓ ${globalStatsFlat.reduce((s,n)=>s+n.flat.length,0)} indexes, ${globalStatsFlat.length} node(s)`,'success');collapseAllNodes()}catch(e){setStatus('stats-status',e.message,'error')}}
+function loadStatsData(){const nodes=document.querySelectorAll('#stats-nodes .stats-node-input'),nd=[];nodes.forEach(n=>{const name=n.querySelector('.node-name').value.trim()||'Node',json=n.querySelector('.node-stats-json').value.trim();if(json)nd.push({name,json})});if(!nd.length){setStatus('stats-status','Paste JSON','error');return}try{globalStatsFlat=nd.map(n=>{const r=parseStatsNodeJSON(n.json,currentMetric);return{nodeName:n.name,indexer:r.indexer,flat:r.flat}});buildReplicaMap();populateFilters();renderStatsView();setStatus('stats-status',`✓ ${globalStatsFlat.reduce((s,n)=>s+n.flat.length,0)} indexes, ${globalStatsFlat.length} node(s)`,'success');collapseAllNodes()}catch(e){setStatus('stats-status',e.message,'error')}}
 
 // ===== SYSTEM:INDEXES TABLE =====
 function buildCreateIndex(idx){
@@ -368,7 +444,7 @@ function makeSystemTable(filtered){
 <th data-col="docTypeFirst" class="cursor-pointer hover:bg-base-300" title="Is docType/type/_class/class the first key in the index?">DocType 1st</th>
 <th data-col="whereOverlap" class="cursor-pointer hover:bg-base-300" title="Fields that appear in both the WHERE clause and the index keys">WHERE∩Keys</th>
 <th data-col="dupeKeys" class="cursor-pointer hover:bg-base-300" title="Fields that appear more than once in the index keys">Dupe Keys</th>
-<th data-col="replica" class="cursor-pointer hover:bg-base-300" title="Number of replicas">Replicas</th>
+<th data-col="replica" class="cursor-pointer hover:bg-base-300" title="Number of replicas. Hover badges to see node placements">Replicas</th>
 <th data-col="createStmt" class="cursor-pointer hover:bg-base-300" title="CREATE INDEX statement">CREATE INDEX</th>
 <th title="Copy index definition to clipboard">📋</th>
 </tr></thead><tbody>`;
@@ -388,7 +464,7 @@ function makeSystemTable(filtered){
 <td class="text-center" data-sort="${dtFirst?1:0}">${dtFirst?'<span class="badge badge-success badge-xs">YES</span>':'<span class="badge badge-warning badge-xs">NO</span>'}</td>
 <td data-sort="${overlap.length}">${overlap.length?'<span class="badge badge-warning badge-xs">'+overlap.join(', ')+'</span>':'<span class="badge badge-ghost badge-xs">—</span>'}</td>
 <td data-sort="${dupes.length}">${dupes.length?'<span class="badge badge-error badge-xs">'+dupes.join(', ')+'</span>':'<span class="badge badge-ghost badge-xs">—</span>'}</td>
-<td class="text-center font-mono text-xs" data-sort="${f.replica}">${f.replica}</td>
+<td class="text-center" data-sort="${f.replica}">${replicaBadgeSystem(f)}</td>
 <td class="font-mono text-[10px] max-w-[400px] truncate" title="${createStmt.replace(/"/g,'&quot;')}">${createStmt}</td>
 <td><button class="btn btn-info btn-xs text-white" onclick="copyCreateIndex(this,'${escaped}')">copy</button></td>
 </tr>`;
@@ -400,7 +476,7 @@ function makeSystemTable(filtered){
 function renderTreemapView(){const c=document.getElementById('treemap-content');c.innerHTML='';activeCharts=activeCharts.filter(ch=>{try{ch.dispose()}catch{}return false});chartIndexMaps=[];if(!globalSystemFlat.length){c.innerHTML='<div class="text-center py-12 text-base-content/40">No data loaded</div>';return}const f=getFilters(),filtered=globalSystemFlat.filter(i=>matchFilter(i,f));if(!filtered.length){c.innerHTML='<div class="alert alert-warning"><span>No indexes match current filters</span></div>';return}c.innerHTML=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex justify-between items-center mb-2"><h3 class="font-bold text-sm">Cluster Indexes (system:indexes)</h3><div class="badge badge-ghost">${filtered.length} indexes</div></div><div id="ch-sys" class="chart-box"></div></div></div>`+makeSystemTable(filtered);setTimeout(()=>{makeTreemap('ch-sys',buildTree(filtered,false),false,null,'sys')},50)}
 
 function renderStatsView(){const c=document.getElementById('stats-content');c.innerHTML='';activeCharts=activeCharts.filter(ch=>{try{ch.dispose()}catch{}return false});chartIndexMaps=[];if(!globalStatsFlat.length){c.innerHTML='<div class="text-center py-12 text-base-content/40">No data loaded</div>';return}const f=getFilters();
-globalStatsFlat.forEach((node,i)=>{const filtered=node.flat.filter(x=>matchFilter(x,f)).map(x=>({...x,value:x[currentMetric]||x.disk_size||x.data_size||0}));if(!filtered.length)return;const totalDisk=filtered.reduce((s,x)=>s+(x.disk_size||0),0);const sec=document.createElement('div');sec.className='card bg-base-100 shadow-sm mb-4';
+globalStatsFlat.forEach((node,i)=>{if(!matchNodeFilter(node.nodeName,f))return;const filtered=node.flat.filter(x=>matchFilter(x,f)).map(x=>({...x,value:x[currentMetric]||x.disk_size||x.data_size||0}));if(!filtered.length)return;const totalDisk=filtered.reduce((s,x)=>s+(x.disk_size||0),0);const sec=document.createElement('div');sec.className='card bg-base-100 shadow-sm mb-4';
 sec.innerHTML=`<div class="card-body p-3">
 <div class="flex justify-between items-center mb-2"><h3 class="font-bold text-sm">${node.nodeName}</h3><div class="flex gap-2">${node.indexer?`<div class="badge badge-${node.indexer.indexer_state==='Active'?'success':'warning'} badge-sm">${node.indexer.indexer_state}</div>`:''}<div class="badge badge-ghost badge-sm">${filtered.length} indexes · ${fmt(totalDisk)}</div></div></div>
 ${node.indexer?`<div class="stats stats-horizontal shadow-sm mb-3 w-full"><div class="stat py-2 px-4" title="Total RAM consumed by all indexes on this node"><div class="stat-title text-[10px]">Memory Used</div><div class="stat-value text-base">${fmt(node.indexer.memory_used||0)}</div><div class="stat-desc text-[10px]">of ${fmt(node.indexer.memory_quota||0)} quota</div></div><div class="stat py-2 px-4" title="Percentage of the node's index memory quota currently in use. High values mean you're running out of room"><div class="stat-title text-[10px]">Memory Quota Used</div><div class="stat-value text-base ${(node.indexer.memory_used||0)/(node.indexer.memory_quota||1)>.9?'text-error':(node.indexer.memory_used||0)/(node.indexer.memory_quota||1)>.7?'text-warning':'text-success'}">${((node.indexer.memory_used||0)/(node.indexer.memory_quota||1)*100).toFixed(1)}%</div></div><div class="stat py-2 px-4" title="Total storage allocated by the indexer on this node (includes internal buffers and caches)"><div class="stat-title text-[10px]">Storage Allocated</div><div class="stat-value text-base">${fmt(node.indexer.memory_total_storage||0)}</div></div><div class="stat py-2 px-4" title="Combined on-disk size of all indexes on this node"><div class="stat-title text-[10px]">Total Disk</div><div class="stat-value text-base">${fmt(totalDisk)}</div></div></div>`:''}
@@ -419,7 +495,7 @@ else{const el=document.getElementById('bar-latency-'+i);if(el)el.innerHTML='<div
 })}
 
 // ===== ANALYSIS TAB =====
-function renderAnalysis(){const c=document.getElementById('analysis-content');c.innerHTML='';activeCharts=activeCharts.filter(ch=>{try{ch.dispose()}catch{}return false});chartIndexMaps=[];const f=getFilters(),sysF=globalSystemFlat.filter(i=>matchFilter(i,f)),statsF=globalStatsFlat.flatMap(n=>n.flat).filter(i=>matchFilter(i,f));
+function renderAnalysis(){const c=document.getElementById('analysis-content');c.innerHTML='';activeCharts=activeCharts.filter(ch=>{try{ch.dispose()}catch{}return false});chartIndexMaps=[];const f=getFilters(),sysF=globalSystemFlat.filter(i=>matchFilter(i,f)),statsF=globalStatsFlat.filter(n=>matchNodeFilter(n.nodeName,f)).flatMap(n=>n.flat).filter(i=>matchFilter(i,f));
 if(!sysF.length&&!statsF.length){c.innerHTML='<div class="text-center py-12 text-base-content/40">Load data in <b>Treemap</b> and/or <b>Stats API</b> tabs first.</div>';return}
 
 let html='<div class="grid grid-cols-1 md:grid-cols-2 gap-4">';
@@ -589,17 +665,19 @@ if(statsF.length){
 if(statsF.length){
   // Pie: Disk by bucket
   const bucketDisk={};statsF.forEach(x=>{bucketDisk[x.bucket]=(bucketDisk[x.bucket]||0)+(x.disk_size||0)});
-  html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div id="pie-disk" class="abox"></div></div></div>`;
+  html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center gap-2 mb-1"><h3 class="font-bold text-sm">Disk Usage by Bucket</h3>${nodeCountBadges(statsF)}</div><div id="pie-disk" class="abox"></div></div></div>`;
 
   // Pie: Memory by bucket
   const bucketMem={};statsF.forEach(x=>{bucketMem[x.bucket]=(bucketMem[x.bucket]||0)+(x.memory_used||0)});
-  html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div id="pie-mem" class="abox"></div></div></div>`;
+  html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center gap-2 mb-1"><h3 class="font-bold text-sm">Memory Usage by Bucket</h3>${nodeCountBadges(statsF)}</div><div id="pie-mem" class="abox"></div></div></div>`;
 
   // Bar: Disk vs In-Memory
-  html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div id="bar-frag" class="abox"></div></div></div>`;
+  const topMemItems=[...statsF].sort((a,b)=>(b.disk_size||0)-(a.disk_size||0)).slice(0,15);
+  html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center gap-2 mb-1"><h3 class="font-bold text-sm">Index Size: Disk vs In-Memory</h3>${nodeCountBadges(topMemItems)}</div><div id="bar-frag" class="abox"></div></div></div>`;
 
   // Bar: Top disk
-  html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div id="bar-disk" class="abox"></div></div></div>`;
+  const topDiskItems=[...statsF].sort((a,b)=>(b.disk_size||0)-(a.disk_size||0)).slice(0,15);
+  html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center gap-2 mb-1"><h3 class="font-bold text-sm">Top Disk Size: Data vs Disk</h3>${nodeCountBadges(topDiskItems)}</div><div id="bar-disk" class="abox"></div></div></div>`;
 
   // Top/Bottom tables
   const metrics=[
@@ -613,18 +691,24 @@ if(statsF.length){
     {key:'items_count',label:'📦 Most Items',fmt:fmtN,desc:true},
   ];
   metrics.forEach(m=>{
-    const sorted=[...statsF].filter(x=>x[m.key]!=null&&(m.desc||x[m.key]>=0)).sort((a,b)=>m.desc?b[m.key]-a[m.key]:a[m.key]-b[m.key]).slice(0,10);
+    const allSorted=[...statsF].filter(x=>x[m.key]!=null&&(m.desc||x[m.key]>=0)).sort((a,b)=>m.desc?b[m.key]-a[m.key]:a[m.key]-b[m.key]);
+    const sorted=allSorted.slice(0,10);
     if(!sorted.length)return;
-    html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><h3 class="font-bold text-sm mb-2">${m.label}</h3><table class="table table-xs"><thead><tr class="bg-base-200"><th>#</th><th>Index</th><th>Bucket</th><th class="text-right">${m.label.split(' ').slice(1).join(' ')}</th></tr></thead><tbody>`;
-    sorted.forEach((item,i)=>{html+=`<tr class="${rankClass(i)}"><td><span class="font-mono text-xs font-bold">${i+1}</span></td><td class="font-semibold">${item.name}</td><td>${item.bucket}</td><td class="font-mono text-xs text-right">${m.fmt(item[m.key])}</td></tr>`});
-    html+=`</tbody></table></div></div>`;
+    const iKey='metric_'+m.key;
+    insightData[iKey]={title:m.label+' — All Indexes',desc:`Sorted ${m.desc?'highest':'lowest'} first. Showing all matching indexes.`,colLabel:m.label.split(' ').slice(1).join(' '),items:allSorted,fmtVal:x=>m.fmt(x[m.key])};
+    html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center gap-2 mb-2"><h3 class="font-bold text-sm">${m.label}</h3>${nodeCountBadges(sorted)}</div><table class="table table-xs"><thead><tr class="bg-base-200"><th>#</th><th>Index</th><th>Node</th><th>Bucket</th><th class="text-right">${m.label.split(' ').slice(1).join(' ')}</th></tr></thead><tbody>`;
+    sorted.forEach((item,i)=>{html+=`<tr class="${rankClass(i)}"><td><span class="font-mono text-xs font-bold">${i+1}</span></td><td class="font-semibold">${item.name}${item._replicaTotal>1?replicaBadge(item):''}</td><td class="text-xs">${item._nodeName||'—'}</td><td>${item.bucket}</td><td class="font-mono text-xs text-right">${m.fmt(item[m.key])}</td></tr>`});
+    html+=`</tbody></table>`;
+    if(allSorted.length>10)html+=`<div class="flex gap-2 justify-center mt-2"><button class="btn btn-ghost btn-xs text-[10px]" onclick="showInsightModal('${iKey}',25)">Show more (25) →</button><button class="btn btn-ghost btn-xs text-[10px]" onclick="showInsightModal('${iKey}',100)">Show more (100) →</button>${allSorted.length>100?`<button class="btn btn-ghost btn-xs text-[10px]" onclick="showInsightModal('${iKey}',${allSorted.length})">Show all (${allSorted.length}) →</button>`:''}</div>`;
+    html+=`</div></div>`;
   });
 
   // Never-scanned table
   const never=statsF.filter(x=>!x.last_known_scan_time||x.last_known_scan_time===0);
   if(never.length){
-    html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><h3 class="font-bold text-sm mb-2">⚠️ Never Scanned Indexes (${never.length})</h3><p class="text-xs text-base-content/50 mb-2">These indexes consume disk but have never been queried. Consider dropping them.</p><div class="overflow-y-auto max-h-[400px]"><table class="table table-xs table-pin-rows"><thead><tr class="bg-base-200"><th>Index</th><th>Bucket</th><th>Scope</th><th class="text-right">Disk</th></tr></thead><tbody>`;
-    never.sort((a,b)=>(b.disk_size||0)-(a.disk_size||0)).forEach(x=>{html+=`<tr><td class="font-semibold">${x.name}</td><td>${x.bucket}</td><td>${x.scope}</td><td class="font-mono text-xs text-right">${fmt(x.disk_size)}</td></tr>`});
+    never.sort((a,b)=>(b.disk_size||0)-(a.disk_size||0));
+    html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center gap-2 mb-2"><h3 class="font-bold text-sm">⚠️ Never Scanned Indexes (${never.length})</h3>${nodeCountBadges(never)}</div><p class="text-xs text-base-content/50 mb-2">These indexes consume disk but have never been queried. Consider dropping them.</p><div class="overflow-y-auto max-h-[400px]"><table class="table table-xs table-pin-rows"><thead><tr class="bg-base-200"><th>Index</th><th>Node</th><th>Bucket</th><th>Scope</th><th class="text-right">Disk</th></tr></thead><tbody>`;
+    never.forEach(x=>{html+=`<tr><td class="font-semibold">${x.name}${x._replicaTotal>1?replicaBadge(x):''}</td><td class="text-xs">${x._nodeName||'—'}</td><td>${x.bucket}</td><td>${x.scope}</td><td class="font-mono text-xs text-right">${fmt(x.disk_size)}</td></tr>`});
     html+=`</tbody></table></div></div></div>`;
   }
 }
