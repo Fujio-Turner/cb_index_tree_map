@@ -1,5 +1,19 @@
 # Release Notes
 
+## v1.1.0 (2026-03-03)
+
+### New Features
+
+- **📐 Lumpiness Score** — A new composite score (0–100) that measures how evenly GSI indexes are distributed across index nodes.
+  - Displayed as a radial progress gauge in the **Stats API** tab (when multiple nodes are loaded) and as an inline badge in the **Analysis** tab summary.
+  - Weighted formula: 30% index count balance + 30% disk size balance + 20% memory balance + 20% replica spread.
+  - Color-coded ratings: Excellent (90+), Good (75+), Fair (60+), Poor (40+), Critical (<40).
+  - Per-node breakdown table shows index count, disk, and memory for each node.
+  - Detailed tooltips explain each sub-metric (Count Imbalance, Disk Imbalance, Memory Imbalance, Replica Co-location).
+  - Helps identify hot spots, uneven memory pressure, and inconsistent query latency across nodes.
+
+---
+
 ## v1.0.2 (2026-03-03)
 
 ### Issues Fixed
