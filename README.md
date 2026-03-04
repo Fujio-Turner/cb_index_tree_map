@@ -32,6 +32,7 @@ CB Index Treemap turns raw Couchbase JSON into interactive treemaps, bar charts,
 - **Full sortable stats table** with every metric — Disk, Data, Bloat, Frag%, Items, Resident%, Memory, Cache%, Latency, Pending, Requests, Last Scan
 - **Bar charts** for lowest cache hit % and highest scan latency
 - **Node-level summary cards** showing memory used vs quota, storage allocated, and total disk
+- **📐 Lumpiness Score** — When multiple index nodes are loaded, a composite score (0–100) shows how evenly indexes are distributed across nodes. Weighted by index count balance (30%), disk size balance (30%), memory balance (20%), and replica spread (20%). Color-coded ratings from Excellent to Critical with per-node breakdown details.
 - **Click a treemap box** → table row highlights and scrolls into view. **Click a table row** → treemap box highlights. 🤝
 - **Last Scan timestamps** displayed in **ISO 8601** format for easy comparison
 
