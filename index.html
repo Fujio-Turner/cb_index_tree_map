@@ -475,7 +475,77 @@ function makeSystemTable(filtered){
 
 function renderTreemapView(){const c=document.getElementById('treemap-content');c.innerHTML='';activeCharts=activeCharts.filter(ch=>{try{ch.dispose()}catch{}return false});chartIndexMaps=[];if(!globalSystemFlat.length){c.innerHTML='<div class="text-center py-12 text-base-content/40">No data loaded</div>';return}const f=getFilters(),filtered=globalSystemFlat.filter(i=>matchFilter(i,f));if(!filtered.length){c.innerHTML='<div class="alert alert-warning"><span>No indexes match current filters</span></div>';return}c.innerHTML=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex justify-between items-center mb-2"><h3 class="font-bold text-sm">Cluster Indexes (system:indexes)</h3><div class="badge badge-ghost">${filtered.length} indexes</div></div><div id="ch-sys" class="chart-box"></div></div></div>`+makeSystemTable(filtered);setTimeout(()=>{makeTreemap('ch-sys',buildTree(filtered,false),false,null,'sys')},50)}
 
+function calcLumpinessScore(){
+  const nodeCount=globalStatsFlat.length;
+  if(nodeCount<2)return null;
+  // 1. Index count balance: how evenly indexes are spread across nodes
+  const idxCounts=globalStatsFlat.map(n=>n.flat.length);
+  const totalIdx=idxCounts.reduce((s,c)=>s+c,0);
+  const idealCount=totalIdx/nodeCount;
+  const countImbalance=idealCount>0?idxCounts.reduce((s,c)=>s+Math.abs(c-idealCount),0)/(totalIdx):0;
+  // 2. Disk size balance: how evenly total disk is spread across nodes
+  const diskPerNode=globalStatsFlat.map(n=>n.flat.reduce((s,x)=>s+(x.disk_size||0),0));
+  const totalDisk=diskPerNode.reduce((s,d)=>s+d,0);
+  const idealDisk=totalDisk/nodeCount;
+  const diskImbalance=idealDisk>0?diskPerNode.reduce((s,d)=>s+Math.abs(d-idealDisk),0)/(totalDisk):0;
+  // 3. Replica spread: for indexes with replicas, are copies on different nodes?
+  const replicaKeys=Object.entries(globalReplicaMap).filter(([,nodes])=>nodes.length>1);
+  let replicaImbalance=0;
+  if(replicaKeys.length){
+    let colocated=0;
+    replicaKeys.forEach(([,nodes])=>{const unique=new Set(nodes).size;if(unique<nodes.length)colocated++});
+    replicaImbalance=colocated/replicaKeys.length;
+  }
+  // 4. Memory balance
+  const memPerNode=globalStatsFlat.map(n=>n.flat.reduce((s,x)=>s+(x.memory_used||0),0));
+  const totalMem=memPerNode.reduce((s,m)=>s+m,0);
+  const idealMem=totalMem/nodeCount;
+  const memImbalance=idealMem>0?memPerNode.reduce((s,m)=>s+Math.abs(m-idealMem),0)/(totalMem):0;
+  // Weighted score: 30% count balance + 30% disk balance + 20% memory balance + 20% replica spread
+  const rawImbalance=countImbalance*0.30+diskImbalance*0.30+memImbalance*0.20+replicaImbalance*0.20;
+  const score=Math.max(0,Math.min(100,Math.round((1-rawImbalance)*100)));
+  return{score,countImbalance:Math.round(countImbalance*100),diskImbalance:Math.round(diskImbalance*100),memImbalance:Math.round(memImbalance*100),replicaImbalance:Math.round(replicaImbalance*100),idxCounts,diskPerNode,memPerNode,nodeNames:globalStatsFlat.map(n=>n.nodeName)};
+}
+
+function renderLumpinessCard(){
+  const lump=calcLumpinessScore();
+  if(!lump)return'';
+  const sc=lump.score;
+  const color=sc>=90?'text-success':sc>=75?'text-info':sc>=60?'text-warning':'text-error';
+  const bgColor=sc>=90?'bg-success/10':sc>=75?'bg-info/10':sc>=60?'bg-warning/10':'bg-error/10';
+  const ringColor=sc>=90?'#22c55e':sc>=75?'#3b82f6':sc>=60?'#f59e0b':'#ef4444';
+  const label=sc>=90?'Excellent':sc>=75?'Good':sc>=60?'Fair':sc>=40?'Poor':'Critical';
+  // Per-node breakdown rows
+  let nodeRows='';
+  lump.nodeNames.forEach((n,i)=>{
+    nodeRows+=`<tr class="text-xs"><td class="font-semibold">${n}</td><td class="font-mono text-right">${lump.idxCounts[i]}</td><td class="font-mono text-right">${fmt(lump.diskPerNode[i])}</td><td class="font-mono text-right">${fmt(lump.memPerNode[i])}</td></tr>`;
+  });
+  return`<div class="card ${bgColor} shadow-sm mb-4"><div class="card-body p-4">
+<div class="flex items-center gap-4 flex-wrap">
+  <div class="tooltip tooltip-right" data-tip="Score out of 100. 100 = indexes are perfectly evenly distributed across all nodes. Lower scores mean some nodes are overloaded while others are underutilized. Based on index count, disk size, memory usage, and replica placement.">
+    <div class="flex flex-col items-center cursor-help">
+      <div class="radial-progress ${color} font-bold text-lg" style="--value:${sc};--size:5rem;--thickness:6px;color:${ringColor}" role="progressbar">${sc}</div>
+      <span class="text-xs font-bold mt-1 ${color}">${label}</span>
+    </div>
+  </div>
+  <div class="flex-1 min-w-[200px]">
+    <div class="flex items-center gap-2 mb-1"><div class="tooltip tooltip-bottom" data-tip="Measures how unevenly (lumpy) your GSI indexes are distributed across index nodes. A perfectly balanced cluster scores 100. Uneven distribution can cause hot spots, uneven memory pressure, and inconsistent query latency across nodes."><h3 class="font-bold text-sm cursor-help underline decoration-dotted">📐 Lumpiness Score</h3></div><span class="text-xs text-base-content/50">How evenly indexes are distributed across ${lump.nodeNames.length} nodes</span></div>
+    <p class="text-[10px] text-base-content/50 mb-2">Weighted: 30% index count balance + 30% disk size balance + 20% memory balance + 20% replica spread. 100 = perfectly even.</p>
+    <div class="grid grid-cols-4 gap-2 text-xs mb-2">
+      <div class="tooltip tooltip-bottom" data-tip="How evenly the number of indexes is distributed across nodes. 0% = perfectly even, 100% = all indexes on one node."><div class="bg-base-100 rounded px-2 py-1 text-center cursor-help"><div class="text-[9px] text-base-content/50 underline decoration-dotted">Count Imbalance</div><div class="font-mono font-bold">${lump.countImbalance}%</div></div></div>
+      <div class="tooltip tooltip-bottom" data-tip="How evenly total on-disk size is spread across nodes. 0% = all nodes store roughly the same amount of index data."><div class="bg-base-100 rounded px-2 py-1 text-center cursor-help"><div class="text-[9px] text-base-content/50 underline decoration-dotted">Disk Imbalance</div><div class="font-mono font-bold">${lump.diskImbalance}%</div></div></div>
+      <div class="tooltip tooltip-bottom" data-tip="How evenly RAM usage is spread across nodes. 0% = all nodes use roughly the same amount of memory for indexes."><div class="bg-base-100 rounded px-2 py-1 text-center cursor-help"><div class="text-[9px] text-base-content/50 underline decoration-dotted">Memory Imbalance</div><div class="font-mono font-bold">${lump.memImbalance}%</div></div></div>
+      <div class="tooltip tooltip-bottom" data-tip="Percentage of replicated indexes that have multiple copies on the same node instead of spread across different nodes. 0% = all replicas are on separate nodes (ideal for HA)."><div class="bg-base-100 rounded px-2 py-1 text-center cursor-help"><div class="text-[9px] text-base-content/50 underline decoration-dotted">Replica Co-location</div><div class="font-mono font-bold">${lump.replicaImbalance}%</div></div></div>
+    </div>
+    <table class="table table-xs w-full"><thead><tr class="bg-base-200/50"><th>Node</th><th class="text-right">Indexes</th><th class="text-right">Disk</th><th class="text-right">Memory</th></tr></thead><tbody>${nodeRows}</tbody></table>
+  </div>
+</div>
+</div></div>`;
+}
+
 function renderStatsView(){const c=document.getElementById('stats-content');c.innerHTML='';activeCharts=activeCharts.filter(ch=>{try{ch.dispose()}catch{}return false});chartIndexMaps=[];if(!globalStatsFlat.length){c.innerHTML='<div class="text-center py-12 text-base-content/40">No data loaded</div>';return}const f=getFilters();
+// Lumpiness Score card (only when multiple nodes)
+if(globalStatsFlat.length>1){const lumpCard=document.createElement('div');lumpCard.innerHTML=renderLumpinessCard();while(lumpCard.firstChild)c.appendChild(lumpCard.firstChild)}
 globalStatsFlat.forEach((node,i)=>{if(!matchNodeFilter(node.nodeName,f))return;const filtered=node.flat.filter(x=>matchFilter(x,f)).map(x=>({...x,value:x[currentMetric]||x.disk_size||x.data_size||0}));if(!filtered.length)return;const totalDisk=filtered.reduce((s,x)=>s+(x.disk_size||0),0);const sec=document.createElement('div');sec.className='card bg-base-100 shadow-sm mb-4';
 sec.innerHTML=`<div class="card-body p-3">
 <div class="flex justify-between items-center mb-2"><h3 class="font-bold text-sm">${node.nodeName}</h3><div class="flex gap-2">${node.indexer?`<div class="badge badge-${node.indexer.indexer_state==='Active'?'success':'warning'} badge-sm">${node.indexer.indexer_state}</div>`:''}<div class="badge badge-ghost badge-sm">${filtered.length} indexes · ${fmt(totalDisk)}</div></div></div>
@@ -517,7 +587,9 @@ if(statsF.length){
 <div class="stat py-2 px-3" title="Average fragmentation across all indexes. High fragmentation wastes disk space and may slow scans"><div class="stat-title text-[10px]">Avg Frag</div><div class="stat-value text-lg">${avgFrag.toFixed(0)}%</div></div>
 <div class="stat py-2 px-3" title="Average percentage of index data kept in memory. Low residency means more disk I/O during scans"><div class="stat-title text-[10px]">Avg Resident</div><div class="stat-value text-lg">${avgRes.toFixed(0)}%</div></div>
 <div class="stat py-2 px-3" title="Number of indexes that have never been queried. These consume disk and memory but provide no value — consider dropping them"><div class="stat-title text-[10px]">Never Scanned</div><div class="stat-value text-lg ${neverScanned>0?'text-warning':''}">${neverScanned}</div><div class="stat-desc text-[10px]">of ${statsF.length}</div></div>
-</div></div></div>`;
+</div>
+${(()=>{const lump=calcLumpinessScore();if(!lump)return'';const sc=lump.score;const color=sc>=90?'text-success':sc>=75?'text-info':sc>=60?'text-warning':'text-error';return`<div class="flex items-center gap-3 mt-3 pt-3 border-t border-base-200"><div class="tooltip tooltip-right" data-tip="Measures how unevenly (lumpy) your GSI indexes are distributed across index nodes. 100 = perfectly balanced. Uneven distribution can cause hot spots, uneven memory pressure, and inconsistent query latency. Weighted: 30% index count + 30% disk size + 20% memory + 20% replica spread."><div class="flex items-center gap-2 cursor-help"><span class="text-sm font-bold underline decoration-dotted">📐 Lumpiness Score</span><span class="font-mono font-bold text-lg ${color}">${sc}</span><span class="badge badge-sm ${sc>=90?'badge-success':sc>=75?'badge-info':sc>=60?'badge-warning':'badge-error'}">${sc>=90?'Excellent':sc>=75?'Good':sc>=60?'Fair':sc>=40?'Poor':'Critical'}</span></div></div><div class="flex gap-2 text-[10px] text-base-content/50 ml-2"><div class="tooltip tooltip-bottom" data-tip="How evenly the number of indexes is distributed across nodes. 0% = perfectly even."><span class="cursor-help underline decoration-dotted">Count: ${lump.countImbalance}%</span></div><span>·</span><div class="tooltip tooltip-bottom" data-tip="How evenly total on-disk size is spread across nodes. 0% = perfectly even."><span class="cursor-help underline decoration-dotted">Disk: ${lump.diskImbalance}%</span></div><span>·</span><div class="tooltip tooltip-bottom" data-tip="How evenly RAM usage is spread across nodes. 0% = perfectly even."><span class="cursor-help underline decoration-dotted">Mem: ${lump.memImbalance}%</span></div><span>·</span><div class="tooltip tooltip-bottom" data-tip="Percentage of replicated indexes with copies on the same node instead of spread out. 0% = all replicas on separate nodes."><span class="cursor-help underline decoration-dotted">Replica: ${lump.replicaImbalance}%</span></div></div><span class="text-[10px] text-base-content/40 ml-auto">${lump.nodeNames.length} nodes</span></div>`})()}
+</div></div>`;
 }
 
 // Word cloud (half width) + Performance Insights (half width)
