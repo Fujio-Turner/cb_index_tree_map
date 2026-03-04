@@ -23,6 +23,7 @@
   <div class="flex-1 gap-3">
     <span class="text-xl font-bold text-error">🗺️ CB Index Treemap</span>
     <span class="text-xs text-base-content/50 hidden sm:inline">Visualize & analyze GSI index sizes, performance & capacity</span>
+    <span class="badge badge-ghost badge-sm text-[10px]">v1.0.2</span>
   </div>
   <div class="flex-none">
     <button class="btn btn-ghost btn-sm gap-1" onclick="openFileManager()">💾 <span id="saved-count" class="badge badge-sm badge-ghost">0</span></button>
@@ -53,9 +54,9 @@
 <div id="panel-treemap" class="tab-panel p-6">
   <div class="card bg-base-100 shadow-sm mb-4">
     <div class="card-body p-4">
-      <h3 class="card-title text-sm">Paste output of: <code class="text-error text-xs">SELECT *, meta() FROM system:indexes</code> <button class="btn btn-xs btn-info text-white" onclick="copyQuery(this,'SELECT *, meta() FROM system:indexes')">copy</button></h3>
+      <h3 class="card-title text-sm">Paste output of: <code class="text-error text-xs">SELECT *, meta() FROM system:indexes</code> <button class="btn btn-xs btn-info text-white" onclick="copyQuery(this,'SELECT *, meta() FROM system:indexes')">copy</button> <button class="btn btn-ghost btn-xs text-base-content/50" id="system-json-toggle" onclick="toggleSystemTextarea(this)" title="Show/hide JSON">▼</button></h3>
       <textarea id="system-json" class="textarea textarea-bordered w-full h-24 font-mono text-xs" placeholder='[{"indexes":{...},"$1":{...}},...]' title="Paste the full JSON output from running SELECT *, meta() FROM system:indexes in Query Workbench or cbq shell"></textarea>
-      <p class="text-xs text-base-content/40">Index structure only (no sizes). Combine with Stats API for full analysis.</p>
+      <p id="system-json-hint" class="text-xs text-base-content/40">Index structure only (no sizes). Combine with Stats API for full analysis.</p>
       <div class="flex gap-2 items-center flex-wrap">
         <button class="btn btn-error btn-sm" onclick="loadSystemData()">Load & Render</button>
         <button class="btn btn-sm btn-outline btn-success" onclick="saveSystemToServer()">💾 Save</button>
@@ -83,11 +84,16 @@
           <div class="flex items-center gap-2 mb-1">
             <span class="text-xs font-bold uppercase text-base-content/50">Node 1:</span>
             <input type="text" class="input input-bordered input-xs w-48 node-name" value="Index Node 1">
+            <button class="btn btn-ghost btn-xs text-base-content/50 node-toggle" onclick="toggleNodeTextarea(this)" title="Show/hide JSON">▼</button>
           </div>
           <textarea class="textarea textarea-bordered w-full h-24 font-mono text-xs node-stats-json" placeholder='curl -u user:pass "http://<node>:9102/api/v1/stats?pretty=true"' title="Paste the JSON output from the GSI stats API (port 9102) for this index node"></textarea>
         </div>
       </div>
-      <button class="btn btn-ghost btn-xs border-dashed border-base-300" onclick="addStatsNode()">+ Add node</button>
+      <div class="flex gap-2 items-center">
+        <button class="btn btn-ghost btn-xs border-dashed border-base-300" onclick="addStatsNode()">+ Add node</button>
+        <button class="btn btn-ghost btn-xs text-base-content/50" onclick="collapseAllNodes()">▶ Collapse all</button>
+        <button class="btn btn-ghost btn-xs text-base-content/50" onclick="expandAllNodes()">▼ Expand all</button>
+      </div>
       <div class="flex gap-2 items-center flex-wrap mt-2">
         <button class="btn btn-error btn-sm" onclick="loadStatsData()">Load & Render</button>
         <button class="btn btn-sm btn-outline btn-success" onclick="saveStatsToServer()">💾 Save All Nodes</button>
@@ -109,6 +115,17 @@
   </div>
 </div>
 
+<!-- Insight Detail Modal -->
+<dialog id="insight-modal" class="modal">
+  <div class="modal-box max-w-3xl max-h-[85vh]">
+    <form method="dialog"><button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button></form>
+    <h3 id="insight-modal-title" class="font-bold text-lg mb-1"></h3>
+    <p id="insight-modal-desc" class="text-xs text-base-content/50 mb-3"></p>
+    <div id="insight-modal-body" class="overflow-y-auto max-h-[65vh]"></div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
 <!-- File Manager Modal -->
 <dialog id="file-modal" class="modal">
   <div class="modal-box max-w-lg">
@@ -126,7 +143,21 @@
 
 <script>
 // ===== GLOBAL STATE =====
-let globalSystemFlat=[],globalStatsFlat=[],currentMetric='disk_size',activeCharts=[],chartIndexMaps=[],statsNodeCount=1;
+let globalSystemFlat=[],globalStatsFlat=[],currentMetric='disk_size',activeCharts=[],chartIndexMaps=[],statsNodeCount=1,insightData={};
+
+function showInsightModal(key){
+  const d=insightData[key];if(!d)return;
+  const modal=document.getElementById('insight-modal');
+  document.getElementById('insight-modal-title').textContent=d.title;
+  document.getElementById('insight-modal-desc').textContent=d.desc;
+  const items=d.items.slice(0,100);
+  let h=`<table class="table table-xs table-zebra w-full"><thead><tr class="bg-base-200"><th class="w-10">#</th><th>Index</th><th>Bucket</th><th>Scope</th><th class="text-right">${d.colLabel}</th></tr></thead><tbody>`;
+  items.forEach((x,i)=>{h+=`<tr><td class="font-mono text-xs font-bold">${i+1}</td><td class="font-semibold">${x.name}</td><td>${x.bucket}</td><td>${x.scope}</td><td class="font-mono text-xs text-right">${d.fmtVal(x)}</td></tr>`});
+  h+='</tbody></table>';
+  if(d.items.length>100)h+=`<p class="text-xs text-base-content/40 mt-2 text-center">Showing top 100 of ${d.items.length}</p>`;
+  document.getElementById('insight-modal-body').innerHTML=h;
+  modal.showModal();
+}
 
 // ===== TABS =====
 function switchMain(t,el){
@@ -214,7 +245,15 @@ function cascadeFilters(){
 function resetFilters(){['f-bucket','f-scope','f-collection','f-index'].forEach(id=>document.getElementById(id).value='');applyFilters()}
 function applyFilters(){cascadeFilters();renderTreemapView();renderStatsView();if(!document.getElementById('panel-analysis').classList.contains('hidden'))renderAnalysis();const f=getFilters();const a=[f.bucket,f.scope,f.collection,f.index].filter(Boolean).length;document.getElementById('filter-count').textContent=a?`(${a} active)`:''}
 
-function addStatsNode(){statsNodeCount++;const c=document.getElementById('stats-nodes'),d=document.createElement('div');d.className='stats-node-input mb-2';d.innerHTML=`<div class="flex items-center gap-2 mb-1"><span class="text-xs font-bold uppercase text-base-content/50">Node ${statsNodeCount}:</span><input type="text" class="input input-bordered input-xs w-48 node-name" value="Index Node ${statsNodeCount}"><button class="btn btn-ghost btn-xs text-error" onclick="this.closest('.stats-node-input').remove()">✕</button></div><textarea class="textarea textarea-bordered w-full h-24 font-mono text-xs node-stats-json" placeholder='Paste stats JSON...'></textarea>`;c.appendChild(d)}
+function addStatsNode(){statsNodeCount++;const c=document.getElementById('stats-nodes'),d=document.createElement('div');d.className='stats-node-input mb-2';d.innerHTML=`<div class="flex items-center gap-2 mb-1"><span class="text-xs font-bold uppercase text-base-content/50">Node ${statsNodeCount}:</span><input type="text" class="input input-bordered input-xs w-48 node-name" value="Index Node ${statsNodeCount}"><button class="btn btn-ghost btn-xs text-base-content/50 node-toggle" onclick="toggleNodeTextarea(this)" title="Show/hide JSON">▼</button><button class="btn btn-ghost btn-xs text-error" onclick="this.closest('.stats-node-input').remove()">✕</button></div><textarea class="textarea textarea-bordered w-full h-24 font-mono text-xs node-stats-json" placeholder='Paste stats JSON...'></textarea>`;c.appendChild(d)}
+
+function toggleSystemTextarea(btn){const ta=document.getElementById('system-json');const hint=document.getElementById('system-json-hint');const hasData=ta.value.trim().length>0;if(ta.classList.contains('hidden')){ta.classList.remove('hidden');if(hint)hint.classList.remove('hidden');btn.textContent='▼'}else{ta.classList.add('hidden');if(hint)hint.classList.add('hidden');btn.textContent=hasData?'▶ ✓':'▶'}}
+
+function toggleNodeTextarea(btn){const wrap=btn.closest('.stats-node-input');const ta=wrap.querySelector('.node-stats-json');const hasData=ta.value.trim().length>0;if(ta.classList.contains('hidden')){ta.classList.remove('hidden');btn.textContent='▼'}else{ta.classList.add('hidden');btn.textContent=hasData?'▶ ✓':'▶'}}
+
+function collapseAllNodes(){document.querySelectorAll('#stats-nodes .stats-node-input').forEach(w=>{const ta=w.querySelector('.node-stats-json');const btn=w.querySelector('.node-toggle');if(!ta.classList.contains('hidden')){ta.classList.add('hidden');const hasData=ta.value.trim().length>0;btn.textContent=hasData?'▶ ✓':'▶'}})}
+
+function expandAllNodes(){document.querySelectorAll('#stats-nodes .stats-node-input').forEach(w=>{const ta=w.querySelector('.node-stats-json');const btn=w.querySelector('.node-toggle');if(ta.classList.contains('hidden')){ta.classList.remove('hidden');btn.textContent='▼'}})}
 
 // ===== PARSING =====
 function parseSystemJSON(js){let d;try{d=JSON.parse(js)}catch{try{d=JSON.parse('['+js+']')}catch{throw new Error('Invalid JSON')}}if(!Array.isArray(d)){if(d.results)d=d.results;else throw new Error('Expected array')}const flat=[];d.forEach(r=>{const idx=r.indexes||r;if(!idx.name)return;const isFTS=idx.using==='fts',bucket=idx.bucket_id||idx.keyspace_id||'unknown',scope=idx.scope_id||'_default',collection=idx.bucket_id?idx.keyspace_id:'_default',dn=isFTS?idx.name+' [FTS]':idx.name;flat.push({fullKey:`${bucket}:${scope}:${collection}:${dn}`,bucket,scope,collection,name:dn,value:1,type:idx.using||'gsi',state:idx.state||'unknown',replica:(idx.metadata&&idx.metadata.num_replica)||0,condition:idx.condition||'',keys:idx.index_key||[],keysStr:(idx.index_key||[]).join(', '),isPrimary:!!idx.is_primary})});return flat}
@@ -237,7 +276,9 @@ function makePie(elId,title,data){const el=document.getElementById(elId);if(!el)
 
 function makeGauge(elId,title,value,max,unit){const el=document.getElementById(elId);if(!el)return;const ch=echarts.init(el);activeCharts.push(ch);const pct=max>0?(value/max*100):0;ch.setOption({series:[{type:'gauge',startAngle:200,endAngle:-20,min:0,max:100,progress:{show:true,width:14,itemStyle:{color:pct>90?'#ef4444':pct>70?'#f59e0b':'#22c55e'}},axisLine:{lineStyle:{width:14,color:[[1,'#e5e7eb']]}},axisTick:{show:false},splitLine:{show:false},axisLabel:{show:false},pointer:{show:false},title:{offsetCenter:[0,'40%'],fontSize:11,color:'#666'},detail:{valueAnimation:true,offsetCenter:[0,'0%'],fontSize:20,fontWeight:'bold',formatter:()=>fmt(value),color:'#333'},data:[{value:pct.toFixed(0),name:title+'\n'+fmt(value)+' / '+fmt(max)}]}]})}
 
-function makeStackedDiskMemBar(elId,data){const el=document.getElementById(elId);if(!el)return;const ch=echarts.init(el);activeCharts.push(ch);const labels=data.map(x=>x.name);const diskOnly=data.map(x=>Math.max(0,(x.disk_size||0)-(x.memory_used||0)));const memValues=data.map(x=>x.memory_used||0);ch.setOption({title:{text:'Index Size: Disk vs In-Memory',left:'center',textStyle:{fontSize:12}},tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:function(p){if(!p.length)return'';const idx=p[0].dataIndex;const d=data[idx];let h='<b>'+p[0].name+'</b><br>';h+=p[0].marker+' On Disk: '+fmt(Math.max(0,(d.disk_size||0)-(d.memory_used||0)))+'<br>';h+=p[1].marker+' In Memory: '+fmt(d.memory_used||0)+'<br>';h+='Total (disk_size): '+fmt(d.disk_size||0);return h}},legend:{data:['On Disk','In Memory'],top:28,textStyle:{fontSize:10}},grid:{left:10,right:20,top:60,bottom:5,containLabel:true},xAxis:{type:'value',axisLabel:{fontSize:10,formatter:fmt}},yAxis:{type:'category',data:labels,axisLabel:{fontSize:9,width:160,overflow:'truncate'},inverse:true},series:[{name:'On Disk',type:'bar',stack:'total',data:diskOnly,itemStyle:{color:'#b91c1c'},barMaxWidth:18},{name:'In Memory',type:'bar',stack:'total',data:memValues,itemStyle:{color:'rgba(239,68,68,0.3)',borderColor:'#ef4444',borderWidth:1},barMaxWidth:18,label:{show:true,position:'right',fontSize:10,color:'#666',formatter:function(p){const d=data[p.dataIndex];const pct=d.disk_size>0?((d.memory_used||0)/d.disk_size*100).toFixed(1):0;return pct+'% in mem'}}}]})}
+function makeStackedDiskDataBar(elId,data){const el=document.getElementById(elId);if(!el)return;const ch=echarts.init(el);activeCharts.push(ch);const labels=data.map(x=>x.name);const overhead=data.map(x=>Math.max(0,(x.disk_size||0)-(x.data_size||0)));const dataValues=data.map(x=>x.data_size||0);ch.setOption({title:{text:'Top Disk Size: w/ Data vs Disk',left:'center',textStyle:{fontSize:12}},tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:function(p){if(!p.length)return'';const idx=p[0].dataIndex;const d=data[idx];let h='<b>'+p[0].name+'</b><br><span style="color:#888;font-size:11px">'+d.bucket+'.'+d.scope+'.'+d.collection+'</span><br>';h+=p[0].marker+' Disk Overhead: '+fmt(Math.max(0,(d.disk_size||0)-(d.data_size||0)))+'<br>';h+=p[1].marker+' Data Size: '+fmt(d.data_size||0)+'<br>';h+='Total (disk_size): '+fmt(d.disk_size||0);return h}},legend:{data:['Disk','Data'],top:28,textStyle:{fontSize:10}},grid:{left:10,right:20,top:60,bottom:5,containLabel:true},xAxis:{type:'value',axisLabel:{fontSize:10,formatter:fmt}},yAxis:{type:'category',data:labels,axisLabel:{fontSize:9,width:160,overflow:'truncate'},inverse:true},series:[{name:'Disk',type:'bar',stack:'total',data:overhead,itemStyle:{color:'#3b82f6'},barMaxWidth:18},{name:'Data',type:'bar',stack:'total',data:dataValues,itemStyle:{color:'rgba(59,130,246,0.3)',borderColor:'#3b82f6',borderWidth:1},barMaxWidth:18,label:{show:true,position:'right',fontSize:10,color:'#666',formatter:function(p){const d=data[p.dataIndex];const pct=d.disk_size>0?((d.data_size||0)/d.disk_size*100).toFixed(1):0;return pct+'% data vs disk'}}}]})}
+
+function makeStackedDiskMemBar(elId,data){const el=document.getElementById(elId);if(!el)return;const ch=echarts.init(el);activeCharts.push(ch);const labels=data.map(x=>x.name);const diskOnly=data.map(x=>Math.max(0,(x.disk_size||0)-(x.memory_used||0)));const memValues=data.map(x=>x.memory_used||0);ch.setOption({title:{text:'Index Size: Disk vs In-Memory',left:'center',textStyle:{fontSize:12}},tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:function(p){if(!p.length)return'';const idx=p[0].dataIndex;const d=data[idx];let h='<b>'+p[0].name+'</b><br><span style="color:#888;font-size:11px">'+d.bucket+'.'+d.scope+'.'+d.collection+'</span><br>';h+=p[0].marker+' On Disk: '+fmt(Math.max(0,(d.disk_size||0)-(d.memory_used||0)))+'<br>';h+=p[1].marker+' In Memory: '+fmt(d.memory_used||0)+'<br>';h+='Total (disk_size): '+fmt(d.disk_size||0);return h}},legend:{data:['On Disk','In Memory'],top:28,textStyle:{fontSize:10}},grid:{left:10,right:20,top:60,bottom:5,containLabel:true},xAxis:{type:'value',axisLabel:{fontSize:10,formatter:fmt}},yAxis:{type:'category',data:labels,axisLabel:{fontSize:9,width:160,overflow:'truncate'},inverse:true},series:[{name:'On Disk',type:'bar',stack:'total',data:diskOnly,itemStyle:{color:'#b91c1c'},barMaxWidth:18},{name:'In Memory',type:'bar',stack:'total',data:memValues,itemStyle:{color:'rgba(239,68,68,0.3)',borderColor:'#ef4444',borderWidth:1},barMaxWidth:18,label:{show:true,position:'right',fontSize:10,color:'#666',formatter:function(p){const d=data[p.dataIndex];const pct=d.disk_size>0?((d.memory_used||0)/d.disk_size*100).toFixed(1):0;return pct+'% in mem'}}}]})}
 
 function onRowClick(row,nIdx){const key=row.dataset.key;row.closest('table').querySelectorAll('tr.highlighted').forEach(r=>r.classList.remove('highlighted'));row.classList.add('highlighted');const entry=chartIndexMaps.find(m=>m.nodeIdx===nIdx);if(!entry)return;function findN(nodes,t){for(const n of nodes){if(n._fullPath===t)return n.name;if(n.children){const f=findN(n.children,t);if(f)return f}}return null}const nm=findN(entry.data,key);if(nm){entry.chart.dispatchAction({type:'highlight',seriesIndex:0,name:nm});document.getElementById('ch-'+nIdx).scrollIntoView({behavior:'smooth',block:'center'});setTimeout(()=>entry.chart.dispatchAction({type:'downplay',seriesIndex:0,name:nm}),3000)}}
 
@@ -288,8 +329,8 @@ return h+'</tbody></table></div>'}
 document.addEventListener('click',function(e){const th=e.target.closest('.stats-table th');if(!th)return;const col=th.dataset.col;if(!col)return;const table=th.closest('table'),tbody=table.querySelector('tbody'),rows=Array.from(tbody.querySelectorAll('tr:not(:last-child)')),isAsc=th.classList.contains('sa-asc');table.querySelectorAll('th').forEach(h=>{h.classList.remove('sa-asc','sa-desc');const a=h.querySelector('.sa');if(a){a.classList.remove('text-error');a.textContent='▼'}});const ci=Array.from(th.parentNode.children).indexOf(th);rows.sort((a,b)=>{const cA=a.children[ci],cB=b.children[ci],hA=cA.hasAttribute('data-sort'),hB=cB.hasAttribute('data-sort');let va=hA?cA.getAttribute('data-sort'):cA.textContent.trim(),vb=hB?cB.getAttribute('data-sort'):cB.textContent.trim();va=Number(va);vb=Number(vb);if(isNaN(va))va=cA.textContent.trim();if(isNaN(vb))vb=cB.textContent.trim();if(typeof va==='number'&&typeof vb==='number')return isAsc?vb-va:va-vb;return isAsc?String(vb).localeCompare(String(va)):String(va).localeCompare(String(vb))});th.classList.add(isAsc?'sa-desc':'sa-asc');const ar=th.querySelector('.sa');if(ar){ar.classList.add('text-error');ar.textContent=isAsc?'▼':'▲'}const total=tbody.querySelector('tr:last-child');rows.forEach(r=>tbody.appendChild(r));if(total)tbody.appendChild(total)});
 
 // ===== LOAD / RENDER =====
-function loadSystemData(){const js=document.getElementById('system-json').value.trim();if(!js){setStatus('system-status','Paste JSON','error');return}try{globalSystemFlat=parseSystemJSON(js);populateFilters();renderTreemapView();setStatus('system-status',`✓ ${globalSystemFlat.length} indexes`,'success')}catch(e){setStatus('system-status',e.message,'error')}}
-function loadStatsData(){const nodes=document.querySelectorAll('#stats-nodes .stats-node-input'),nd=[];nodes.forEach(n=>{const name=n.querySelector('.node-name').value.trim()||'Node',json=n.querySelector('.node-stats-json').value.trim();if(json)nd.push({name,json})});if(!nd.length){setStatus('stats-status','Paste JSON','error');return}try{globalStatsFlat=nd.map(n=>{const r=parseStatsNodeJSON(n.json,currentMetric);return{nodeName:n.name,indexer:r.indexer,flat:r.flat}});populateFilters();renderStatsView();setStatus('stats-status',`✓ ${globalStatsFlat.reduce((s,n)=>s+n.flat.length,0)} indexes, ${globalStatsFlat.length} node(s)`,'success')}catch(e){setStatus('stats-status',e.message,'error')}}
+function loadSystemData(){const js=document.getElementById('system-json').value.trim();if(!js){setStatus('system-status','Paste JSON','error');return}try{globalSystemFlat=parseSystemJSON(js);populateFilters();renderTreemapView();setStatus('system-status',`✓ ${globalSystemFlat.length} indexes`,'success');const tb=document.getElementById('system-json-toggle');if(tb)toggleSystemTextarea(tb)}catch(e){setStatus('system-status',e.message,'error')}}
+function loadStatsData(){const nodes=document.querySelectorAll('#stats-nodes .stats-node-input'),nd=[];nodes.forEach(n=>{const name=n.querySelector('.node-name').value.trim()||'Node',json=n.querySelector('.node-stats-json').value.trim();if(json)nd.push({name,json})});if(!nd.length){setStatus('stats-status','Paste JSON','error');return}try{globalStatsFlat=nd.map(n=>{const r=parseStatsNodeJSON(n.json,currentMetric);return{nodeName:n.name,indexer:r.indexer,flat:r.flat}});populateFilters();renderStatsView();setStatus('stats-status',`✓ ${globalStatsFlat.reduce((s,n)=>s+n.flat.length,0)} indexes, ${globalStatsFlat.length} node(s)`,'success');collapseAllNodes()}catch(e){setStatus('stats-status',e.message,'error')}}
 
 // ===== SYSTEM:INDEXES TABLE =====
 function buildCreateIndex(idx){
@@ -383,11 +424,8 @@ if(!sysF.length&&!statsF.length){c.innerHTML='<div class="text-center py-12 text
 
 let html='<div class="grid grid-cols-1 md:grid-cols-2 gap-4">';
 
-// Word cloud
-if(sysF.length)html+=`<div class="card bg-base-100 shadow-sm md:col-span-2"><div class="card-body p-3"><h3 class="font-bold text-sm mb-2">🏷️ Most Commonly Indexed Fields</h3><div id="wc-box" class="abox"></div></div></div>`;
-
+// Summary stats (full width, above everything)
 if(statsF.length){
-  // Summary stats
   const tDisk=statsF.reduce((s,x)=>s+(x.disk_size||0),0),tData=statsF.reduce((s,x)=>s+(x.data_size||0),0),tMem=statsF.reduce((s,x)=>s+(x.memory_used||0),0),tItems=statsF.reduce((s,x)=>s+(x.items_count||0),0);
   const avgFrag=statsF.length?(statsF.reduce((s,x)=>s+(x.frag_percent||0),0)/statsF.length):0;
   const resArr=statsF.filter(x=>x.resident_percent!=null);const avgRes=resArr.length?(resArr.reduce((s,x)=>s+x.resident_percent,0)/resArr.length):0;
@@ -404,7 +442,151 @@ if(statsF.length){
 <div class="stat py-2 px-3" title="Average percentage of index data kept in memory. Low residency means more disk I/O during scans"><div class="stat-title text-[10px]">Avg Resident</div><div class="stat-value text-lg">${avgRes.toFixed(0)}%</div></div>
 <div class="stat py-2 px-3" title="Number of indexes that have never been queried. These consume disk and memory but provide no value — consider dropping them"><div class="stat-title text-[10px]">Never Scanned</div><div class="stat-value text-lg ${neverScanned>0?'text-warning':''}">${neverScanned}</div><div class="stat-desc text-[10px]">of ${statsF.length}</div></div>
 </div></div></div>`;
+}
 
+// Word cloud (half width) + Performance Insights (half width)
+if(sysF.length)html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><h3 class="font-bold text-sm mb-2">🏷️ Most Commonly Indexed Fields</h3><div id="wc-box" class="abox"></div></div></div>`;
+
+// Performance Insights panel (right half beside word cloud)
+if(statsF.length){
+  // 1. Index Efficiency Score
+  const effScores=statsF.map(x=>{
+    const cache=x.cache_hit_percent||0,res=x.resident_percent!=null?x.resident_percent:100;
+    const latMs=(x.avg_scan_latency||0)/1e6;
+    const latScore=latMs<=0.1?100:latMs<=1?80:latMs<=10?50:latMs<=100?20:0;
+    const score=Math.round(cache*0.35+res*0.35+latScore*0.3);
+    const grade=score>=90?'A':score>=75?'B':score>=60?'C':score>=40?'D':'F';
+    const color=score>=90?'text-success':score>=75?'text-info':score>=60?'text-warning':'text-error';
+    return{...x,effScore:score,effGrade:grade,effColor:color};
+  });
+  const avgEff=effScores.length?Math.round(effScores.reduce((s,x)=>s+x.effScore,0)/effScores.length):0;
+  const overallGrade=avgEff>=90?'A':avgEff>=75?'B':avgEff>=60?'C':avgEff>=40?'D':'F';
+  const overallColor=avgEff>=90?'text-success':avgEff>=75?'text-info':avgEff>=60?'text-warning':'text-error';
+  const allEffSorted=[...effScores].sort((a,b)=>a.effScore-b.effScore);
+  const worstEff=allEffSorted.slice(0,3);
+
+  // 2. Rows Returned per Request
+  const withReqs=statsF.filter(x=>x.num_requests>0).map(x=>({...x,rowsPerReq:x.num_rows_returned/x.num_requests}));
+  const allRowsSorted=[...withReqs].sort((a,b)=>b.rowsPerReq-a.rowsPerReq);
+  const highRowsPerReq=allRowsSorted.slice(0,3);
+  const avgRowsPerReq=withReqs.length?(withReqs.reduce((s,x)=>s+x.rowsPerReq,0)/withReqs.length):0;
+
+  // 3. Scan Throughput (Bytes Read per Request)
+  const withScanBytes=statsF.filter(x=>x.num_requests>0&&x.scan_bytes_read>0).map(x=>({...x,bytesPerReq:x.scan_bytes_read/x.num_requests}));
+  const allBytesSorted=[...withScanBytes].sort((a,b)=>b.bytesPerReq-a.bytesPerReq);
+  const highBytesPerReq=allBytesSorted.slice(0,3);
+
+  // 4. Indexing Backlog
+  const backlog=statsF.filter(x=>(x.num_docs_pending||0)+(x.num_docs_queued||0)>0).map(x=>({...x,totalBacklog:(x.num_docs_pending||0)+(x.num_docs_queued||0)})).sort((a,b)=>b.totalBacklog-a.totalBacklog);
+  const totalBacklog=backlog.reduce((s,x)=>s+x.totalBacklog,0);
+
+  // 5. Memory Efficiency (Items per MB)
+  const memEff=statsF.filter(x=>x.memory_used>0&&x.items_count>0).map(x=>({...x,itemsPerMB:x.items_count/(x.memory_used/1048576)}));
+  const allMemEffSorted=[...memEff].sort((a,b)=>a.itemsPerMB-b.itemsPerMB);
+  const leastMemEff=allMemEffSorted.slice(0,3);
+  const avgItemsPerMB=memEff.length?(memEff.reduce((s,x)=>s+x.itemsPerMB,0)/memEff.length):0;
+
+  // 6. Cold vs Hot Distribution
+  const now=Date.now()*1e6;
+  const oneHour=3600*1e9,oneDay=86400*1e9,oneWeek=7*oneDay;
+  let hotCount=0,warmCount=0,coldCount=0,frozenCount=0;
+  statsF.forEach(x=>{
+    if(!x.last_known_scan_time||x.last_known_scan_time===0){frozenCount++;return}
+    const age=now-x.last_known_scan_time;
+    if(age<oneHour)hotCount++;else if(age<oneDay)warmCount++;else if(age<oneWeek)coldCount++;else frozenCount++;
+  });
+
+  // 7. Disk Waste from Never-Scanned
+  const neverScannedItems=statsF.filter(x=>!x.last_known_scan_time||x.last_known_scan_time===0);
+  const wastedDisk=neverScannedItems.reduce((s,x)=>s+(x.disk_size||0),0);
+  const wastedMem=neverScannedItems.reduce((s,x)=>s+(x.memory_used||0),0);
+
+  // Store full datasets for "Show More" modal
+  insightData={
+    efficiency:{title:'🎯 Index Efficiency Score — All Indexes',desc:'Weighted score: 35% cache hit rate + 35% memory residency + 30% scan latency. Grade: A (90+), B (75+), C (60+), D (40+), F (<40). Sorted worst first.',colLabel:'Grade (Score)',items:allEffSorted,fmtVal:x=>`<span class="font-bold ${x.effColor}">${x.effGrade} (${x.effScore})</span>`},
+    rowsPerReq:{title:'📤 Rows Returned per Request — All Indexes',desc:'num_rows_returned ÷ num_requests. High values may indicate broad scans, missing WHERE clauses, or full index scans. Sorted highest first.',colLabel:'Rows / Req',items:allRowsSorted,fmtVal:x=>fmtN(Math.round(x.rowsPerReq))+' rows/req'},
+    scanIO:{title:'📊 Scan I/O per Request — All Indexes',desc:'scan_bytes_read ÷ num_requests. High values mean queries read large amounts of index data per scan. Consider covered indexes or tighter predicates. Sorted highest first.',colLabel:'Bytes / Req',items:allBytesSorted,fmtVal:x=>fmt(Math.round(x.bytesPerReq))+'/req'},
+    backlog:{title:'⏳ Indexing Backlog — All Indexes',desc:'num_docs_pending + num_docs_queued. Non-zero means the index is behind on mutations and queries may return stale data. Sorted largest backlog first.',colLabel:'Pending Docs',items:backlog,fmtVal:x=>fmtN(x.totalBacklog)+' docs'},
+    memEff:{title:'🧠 Memory Efficiency — All Indexes',desc:'items_count ÷ memory_used (in MB). Lower values mean the index uses more RAM per item — often wide keys, array indexes, or high overhead. Sorted least efficient first.',colLabel:'Items / MB',items:allMemEffSorted,fmtVal:x=>fmtN(Math.round(x.itemsPerMB))+' items/MB'},
+    wasted:{title:'🗑️ Never-Scanned Indexes — Full List',desc:'Indexes with last_known_scan_time = 0. These consume disk and RAM but have never served a query. Consider dropping them to reclaim resources. Sorted by disk size.',colLabel:'Disk / Memory',items:[...neverScannedItems].sort((a,b)=>(b.disk_size||0)-(a.disk_size||0)),fmtVal:x=>fmt(x.disk_size)+' / '+fmt(x.memory_used)}
+  };
+
+  const showMoreBtn=(key,total)=>total>3?`<button class="btn btn-ghost btn-xs w-full mt-1 text-[10px]" onclick="showInsightModal('${key}')">Show all ${total} →</button>`:'';
+
+  html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3 overflow-y-auto" style="max-height:390px">
+<h3 class="font-bold text-sm mb-2">⚡ Performance Insights</h3>
+<div class="space-y-3 text-xs">
+
+<div>
+  <div class="flex justify-between items-center mb-1"><div class="tooltip tooltip-right" data-tip="A combined health grade (A–F) for each index based on: 35% cache hit rate, 35% memory residency, and 30% scan latency. A = excellent (90+), B = good (75+), C = fair (60+), D = poor (40+), F = critical (<40). The 3 worst-scoring indexes are shown below."><span class="font-semibold cursor-help underline decoration-dotted">🎯 Index Efficiency Score</span></div><span class="font-bold text-lg ${overallColor}">${overallGrade}</span></div>
+  <p class="text-base-content/50 text-[10px] mb-1">Weighted: 35% cache hit + 35% resident% + 30% latency</p>
+  <div class="text-[10px] space-y-0.5">${worstEff.map(x=>`<div class="flex justify-between"><span class="truncate max-w-[60%]">${x.name}</span><span class="font-mono font-bold ${x.effColor}">${x.effGrade} (${x.effScore})</span></div>`).join('')}</div>
+  ${showMoreBtn('efficiency',allEffSorted.length)}
+</div>
+<div class="divider my-0"></div>
+
+<div>
+  <div class="flex justify-between items-center"><div class="tooltip tooltip-right" data-tip="Average number of rows returned per scan request (num_rows_returned ÷ num_requests). A very high ratio may indicate queries doing full index scans or missing WHERE clauses. A low ratio close to 1 is typical for point lookups. The top 3 highest-ratio indexes are shown."><span class="font-semibold cursor-help underline decoration-dotted">📤 Rows Returned / Request</span></div><span class="font-mono">${avgRowsPerReq.toFixed(1)} avg</span></div>
+  <p class="text-base-content/50 text-[10px] mb-1">High ratio → broad scans or missing WHERE clause</p>
+  <div class="text-[10px] space-y-0.5">${highRowsPerReq.map(x=>`<div class="flex justify-between"><span class="truncate max-w-[60%]">${x.name}</span><span class="font-mono text-warning">${fmtN(Math.round(x.rowsPerReq))} rows/req</span></div>`).join('')}</div>
+  ${showMoreBtn('rowsPerReq',allRowsSorted.length)}
+</div>
+<div class="divider my-0"></div>
+
+<div>
+  <div class="flex justify-between items-center"><div class="tooltip tooltip-right" data-tip="Bytes of index data read from disk per scan request (scan_bytes_read ÷ num_requests). High values mean queries are scanning large portions of the index — consider adding covered fields, tightening WHERE conditions, or adding a more selective index. Top 3 heaviest shown."><span class="font-semibold cursor-help underline decoration-dotted">📊 Scan I/O per Request</span></div></div>
+  <p class="text-base-content/50 text-[10px] mb-1">Bytes read per scan — high = heavy I/O per query</p>
+  <div class="text-[10px] space-y-0.5">${highBytesPerReq.length?highBytesPerReq.map(x=>`<div class="flex justify-between"><span class="truncate max-w-[60%]">${x.name}</span><span class="font-mono text-error">${fmt(Math.round(x.bytesPerReq))}/req</span></div>`).join(''):'<span class="text-base-content/30">No scan data</span>'}</div>
+  ${showMoreBtn('scanIO',allBytesSorted.length)}
+</div>
+<div class="divider my-0"></div>
+
+<div>
+  <div class="flex justify-between items-center"><div class="tooltip tooltip-right" data-tip="Total documents waiting to be indexed (num_docs_pending + num_docs_queued). Non-zero means the index is behind on mutations and queries may return stale results. Large backlogs can indicate undersized indexer resources or heavy write workloads."><span class="font-semibold cursor-help underline decoration-dotted">⏳ Indexing Backlog</span></div><span class="font-mono ${totalBacklog>0?'text-error':'text-success'}">${fmtN(totalBacklog)} docs</span></div>
+  <p class="text-base-content/50 text-[10px] mb-1">${backlog.length} index${backlog.length!==1?'es':''} behind on mutations — queries may read stale data</p>
+  <div class="text-[10px] space-y-0.5">${backlog.slice(0,3).map(x=>`<div class="flex justify-between"><span class="truncate max-w-[60%]">${x.name}</span><span class="font-mono text-warning">${fmtN(x.totalBacklog)} pending</span></div>`).join('')}</div>
+  ${showMoreBtn('backlog',backlog.length)}
+</div>
+<div class="divider my-0"></div>
+
+<div>
+  <div class="flex justify-between items-center"><div class="tooltip tooltip-right" data-tip="How many indexed items each index stores per megabyte of RAM (items_count ÷ memory_used_MB). Lower values mean the index uses more memory per item — often due to wide keys, large array indexes, or high overhead. The 3 least efficient are shown. Compare with the average to find outliers."><span class="font-semibold cursor-help underline decoration-dotted">🧠 Memory Efficiency</span></div><span class="font-mono">${fmtN(Math.round(avgItemsPerMB))} items/MB</span></div>
+  <p class="text-base-content/50 text-[10px] mb-1">Least efficient indexes (fewest items per MB RAM)</p>
+  <div class="text-[10px] space-y-0.5">${leastMemEff.map(x=>`<div class="flex justify-between"><span class="truncate max-w-[60%]">${x.name}</span><span class="font-mono text-warning">${fmtN(Math.round(x.itemsPerMB))} items/MB</span></div>`).join('')}</div>
+  ${showMoreBtn('memEff',allMemEffSorted.length)}
+</div>
+<div class="divider my-0"></div>
+
+<div>
+  <div class="tooltip tooltip-right" data-tip="Categorizes all indexes by when they were last scanned. Hot = scanned within the last hour (actively used). Warm = within 1 day. Cold = within 1 week. Frozen = never scanned or over 1 week ago. A large Frozen segment means many indexes are consuming resources without serving queries."><span class="font-semibold mb-1 cursor-help underline decoration-dotted">🌡️ Index Activity Distribution</span></div>
+  <div class="flex gap-1 w-full h-5 rounded overflow-hidden text-[9px] font-bold text-white text-center leading-5 mt-1">
+    ${hotCount?`<div class="tooltip tooltip-bottom tooltip-success" data-tip="Hot: ${hotCount} indexes scanned within the last hour — actively serving queries"><div class="bg-success h-full flex items-center justify-center" style="flex:${hotCount}">${hotCount}</div></div>`:''}
+    ${warmCount?`<div class="tooltip tooltip-bottom tooltip-info" data-tip="Warm: ${warmCount} indexes scanned within the last day"><div class="bg-info h-full flex items-center justify-center" style="flex:${warmCount}">${warmCount}</div></div>`:''}
+    ${coldCount?`<div class="tooltip tooltip-bottom tooltip-warning" data-tip="Cold: ${coldCount} indexes scanned within the last week — infrequently used"><div class="bg-warning h-full flex items-center justify-center" style="flex:${coldCount}">${coldCount}</div></div>`:''}
+    ${frozenCount?`<div class="tooltip tooltip-bottom tooltip-error" data-tip="Frozen: ${frozenCount} indexes never scanned or inactive for over a week — candidates for removal"><div class="bg-error h-full flex items-center justify-center" style="flex:${frozenCount}">${frozenCount}</div></div>`:''}
+  </div>
+  <div class="flex justify-between text-[9px] text-base-content/50 mt-0.5">
+    <span>🟢 Hot ${hotCount}</span><span>🔵 Warm ${warmCount}</span><span>🟡 Cold ${coldCount}</span><span>🔴 Frozen ${frozenCount}</span>
+  </div>
+</div>
+<div class="divider my-0"></div>
+
+<div>
+  <div class="flex justify-between items-center"><div class="tooltip tooltip-right" data-tip="Total disk space and RAM consumed by indexes that have never been scanned (last_known_scan_time = 0). These indexes cost storage and memory but provide zero query value. Dropping them reclaims these resources immediately."><span class="font-semibold cursor-help underline decoration-dotted">🗑️ Wasted Resources</span></div><span class="font-mono text-[10px]">${neverScannedItems.length} index${neverScannedItems.length!==1?'es':''}</span></div>
+  <div class="flex gap-2 mt-1">
+    <div class="flex-1 bg-error/10 rounded px-2 py-1 text-center"><div class="text-[9px] text-base-content/50">Disk Saved</div><div class="font-mono font-bold text-error text-sm">${fmt(wastedDisk)}</div></div>
+    <div class="flex-1 bg-error/10 rounded px-2 py-1 text-center"><div class="text-[9px] text-base-content/50">Memory Saved</div><div class="font-mono font-bold text-error text-sm">${fmt(wastedMem)}</div></div>
+  </div>
+  ${neverScannedItems.length>3?`<button class="btn btn-ghost btn-xs w-full mt-1 text-[10px]" onclick="showInsightModal('wasted')">Show all ${neverScannedItems.length} →</button>`:''}
+</div>
+
+</div></div></div>`;
+} else if(sysF.length) {
+  // If only system data, no stats — fill the right column with a prompt
+  html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3 flex items-center justify-center text-base-content/40 text-sm">Load <b class="mx-1">Stats API</b> data to see Performance Insights</div></div>`;
+}
+
+if(statsF.length){
   // Pie: Disk by bucket
   const bucketDisk={};statsF.forEach(x=>{bucketDisk[x.bucket]=(bucketDisk[x.bucket]||0)+(x.disk_size||0)});
   html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div id="pie-disk" class="abox"></div></div></div>`;
@@ -441,9 +623,9 @@ if(statsF.length){
   // Never-scanned table
   const never=statsF.filter(x=>!x.last_known_scan_time||x.last_known_scan_time===0);
   if(never.length){
-    html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><h3 class="font-bold text-sm mb-2">⚠️ Never Scanned Indexes (${never.length})</h3><p class="text-xs text-base-content/50 mb-2">These indexes consume disk but have never been queried. Consider dropping them.</p><table class="table table-xs"><thead><tr class="bg-base-200"><th>Index</th><th>Bucket</th><th>Scope</th><th class="text-right">Disk</th></tr></thead><tbody>`;
+    html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><h3 class="font-bold text-sm mb-2">⚠️ Never Scanned Indexes (${never.length})</h3><p class="text-xs text-base-content/50 mb-2">These indexes consume disk but have never been queried. Consider dropping them.</p><div class="overflow-y-auto max-h-[400px]"><table class="table table-xs table-pin-rows"><thead><tr class="bg-base-200"><th>Index</th><th>Bucket</th><th>Scope</th><th class="text-right">Disk</th></tr></thead><tbody>`;
     never.sort((a,b)=>(b.disk_size||0)-(a.disk_size||0)).forEach(x=>{html+=`<tr><td class="font-semibold">${x.name}</td><td>${x.bucket}</td><td>${x.scope}</td><td class="font-mono text-xs text-right">${fmt(x.disk_size)}</td></tr>`});
-    html+=`</tbody></table></div></div>`;
+    html+=`</tbody></table></div></div></div>`;
   }
 }
 
@@ -460,9 +642,9 @@ setTimeout(()=>{
     // Stacked bar: Disk vs In-Memory
     const topMem=[...statsF].sort((a,b)=>(b.disk_size||0)-(a.disk_size||0)).slice(0,15);
     makeStackedDiskMemBar('bar-frag',topMem);
-    // Disk bar
+    // Disk vs Data stacked bar
     const topDisk=[...statsF].sort((a,b)=>(b.disk_size||0)-(a.disk_size||0)).slice(0,15);
-    makeBar('bar-disk','Top Disk Size',topDisk.map(x=>x.name),topDisk.map(x=>x.disk_size||0),'#3b82f6',fmt);
+    makeStackedDiskDataBar('bar-disk',topDisk);
   }
 },100)}
 
