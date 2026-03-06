@@ -208,6 +208,8 @@ function toggleSecureCurl(){const secure=document.getElementById('stats-secure-c
 
 // ===== UTILS =====
 function fmt(b){if(b==null||b===0)return'0 B';const k=1024,s=['B','KB','MB','GB','TB'],i=Math.floor(Math.log(Math.abs(b))/Math.log(k));return parseFloat((b/Math.pow(k,i)).toFixed(2))+' '+s[i]}
+function truncPart(s,max){if(s.length<=max)return s;const half=Math.floor((max-2)/2);return s.slice(0,half)+'..'+s.slice(s.length-half)}
+function bscLabel(x){const full=x.bucket+'.'+x.scope+'.'+x.collection;const short=truncPart(x.bucket,6)+'.'+truncPart(x.scope,6)+'.'+truncPart(x.collection,6);const display=full.length<=24?full:short;return'<span class="tooltip tooltip-top z-50" data-tip="'+full+'"><span class="text-base-content/70 cursor-help">'+display+'</span></span>'}
 function fmtN(n){return n==null?'—':n.toLocaleString()}
 function fmtNs(ns){if(!ns||ns===0)return'0';const ms=ns/1e6;if(ms<0.001)return ns.toFixed(0)+' ns';if(ms<1)return(ns/1e3).toFixed(1)+' µs';if(ms<1000)return ms.toFixed(1)+' ms';return(ms/1000).toFixed(2)+' s'}
 function fmtScanTime(ns){if(!ns||ns===0)return'<span class="text-base-content/30 italic text-[10px]">never</span>';try{const d=new Date(ns/1e6);return isNaN(d.getTime())?'—':'<span class="text-[10px]">'+d.toISOString()+'</span>'}catch{return'—'}}
@@ -729,7 +731,7 @@ if(statsF.length){
 <div>
   <div class="flex justify-between items-center mb-1"><div class="tooltip tooltip-right" data-tip="A combined health grade (A–F) for each index based on: 35% cache hit rate, 35% memory residency, and 30% scan latency. A = excellent (90+), B = good (75+), C = fair (60+), D = poor (40+), F = critical (<40). The 3 worst-scoring indexes are shown below."><span class="font-semibold cursor-help underline decoration-dotted">🎯 Index Efficiency Score</span></div><span class="font-bold text-lg ${overallColor}">${overallGrade}</span></div>
   <p class="text-base-content/50 text-[10px] mb-1">Weighted: 35% cache hit + 35% resident% + 30% latency</p>
-  <div class="text-[10px] space-y-0.5">${worstEff.map(x=>`<div class="flex justify-between"><span class="truncate max-w-[60%]">${x.name}</span><span class="font-mono font-bold ${x.effColor}">${x.effGrade} (${x.effScore})</span></div>`).join('')}</div>
+  <div class="text-[10px] space-y-0.5">${worstEff.map(x=>`<div class="flex justify-between items-start"><div class="min-w-0 mr-2"><div class="font-semibold truncate">${x.name}</div><div class="text-[9px]">${bscLabel(x)}</div></div><span class="font-mono font-bold ${x.effColor} whitespace-nowrap">${x.effGrade} (${x.effScore})</span></div>`).join('')}</div>
   ${showMoreBtn('efficiency',allEffSorted.length)}
 </div>
 <div class="divider my-0"></div>
@@ -737,7 +739,7 @@ if(statsF.length){
 <div>
   <div class="flex justify-between items-center"><div class="tooltip tooltip-right" data-tip="Average number of rows returned per scan request (num_rows_returned ÷ num_requests). A very high ratio may indicate queries doing full index scans or missing WHERE clauses. A low ratio close to 1 is typical for point lookups. The top 3 highest-ratio indexes are shown."><span class="font-semibold cursor-help underline decoration-dotted">📤 Rows Returned / Request</span></div><span class="font-mono">${avgRowsPerReq.toFixed(1)} avg</span></div>
   <p class="text-base-content/50 text-[10px] mb-1">High ratio → broad scans or missing WHERE clause</p>
-  <div class="text-[10px] space-y-0.5">${highRowsPerReq.map(x=>`<div class="flex justify-between"><span class="truncate max-w-[60%]">${x.name}</span><span class="font-mono text-warning">${fmtN(Math.round(x.rowsPerReq))} rows/req</span></div>`).join('')}</div>
+  <div class="text-[10px] space-y-0.5">${highRowsPerReq.map(x=>`<div class="flex justify-between items-start"><div class="min-w-0 mr-2"><div class="font-semibold truncate">${x.name}</div><div class="text-[9px]">${bscLabel(x)}</div></div><span class="font-mono text-warning whitespace-nowrap">${fmtN(Math.round(x.rowsPerReq))} rows/req</span></div>`).join('')}</div>
   ${showMoreBtn('rowsPerReq',allRowsSorted.length)}
 </div>
 <div class="divider my-0"></div>
@@ -745,7 +747,7 @@ if(statsF.length){
 <div>
   <div class="flex justify-between items-center"><div class="tooltip tooltip-right" data-tip="Bytes of index data read from disk per scan request (scan_bytes_read ÷ num_requests). High values mean queries are scanning large portions of the index — consider adding covered fields, tightening WHERE conditions, or adding a more selective index. Top 3 heaviest shown."><span class="font-semibold cursor-help underline decoration-dotted">📊 Scan I/O per Request</span></div></div>
   <p class="text-base-content/50 text-[10px] mb-1">Bytes read per scan — high = heavy I/O per query</p>
-  <div class="text-[10px] space-y-0.5">${highBytesPerReq.length?highBytesPerReq.map(x=>`<div class="flex justify-between"><span class="truncate max-w-[60%]">${x.name}</span><span class="font-mono text-error">${fmt(Math.round(x.bytesPerReq))}/req</span></div>`).join(''):'<span class="text-base-content/30">No scan data</span>'}</div>
+  <div class="text-[10px] space-y-0.5">${highBytesPerReq.length?highBytesPerReq.map(x=>`<div class="flex justify-between items-start"><div class="min-w-0 mr-2"><div class="font-semibold truncate">${x.name}</div><div class="text-[9px]">${bscLabel(x)}</div></div><span class="font-mono text-error whitespace-nowrap">${fmt(Math.round(x.bytesPerReq))}/req</span></div>`).join(''):'<span class="text-base-content/30">No scan data</span>'}</div>
   ${showMoreBtn('scanIO',allBytesSorted.length)}
 </div>
 <div class="divider my-0"></div>
@@ -753,7 +755,7 @@ if(statsF.length){
 <div>
   <div class="flex justify-between items-center"><div class="tooltip tooltip-right" data-tip="Total documents waiting to be indexed (num_docs_pending + num_docs_queued). Non-zero means the index is behind on mutations and queries may return stale results. Large backlogs can indicate undersized indexer resources or heavy write workloads."><span class="font-semibold cursor-help underline decoration-dotted">⏳ Indexing Backlog</span></div><span class="font-mono ${totalBacklog>0?'text-error':'text-success'}">${fmtN(totalBacklog)} docs</span></div>
   <p class="text-base-content/50 text-[10px] mb-1">${backlog.length} index${backlog.length!==1?'es':''} behind on mutations — queries may read stale data</p>
-  <div class="text-[10px] space-y-0.5">${backlog.slice(0,3).map(x=>`<div class="flex justify-between"><span class="truncate max-w-[60%]">${x.name}</span><span class="font-mono text-warning">${fmtN(x.totalBacklog)} pending</span></div>`).join('')}</div>
+  <div class="text-[10px] space-y-0.5">${backlog.slice(0,3).map(x=>`<div class="flex justify-between items-start"><div class="min-w-0 mr-2"><div class="font-semibold truncate">${x.name}</div><div class="text-[9px]">${bscLabel(x)}</div></div><span class="font-mono text-warning whitespace-nowrap">${fmtN(x.totalBacklog)} pending</span></div>`).join('')}</div>
   ${showMoreBtn('backlog',backlog.length)}
 </div>
 <div class="divider my-0"></div>
@@ -761,7 +763,7 @@ if(statsF.length){
 <div>
   <div class="flex justify-between items-center"><div class="tooltip tooltip-right" data-tip="How many indexed items each index stores per megabyte of RAM (items_count ÷ memory_used_MB). Lower values mean the index uses more memory per item — often due to wide keys, large array indexes, or high overhead. The 3 least efficient are shown. Compare with the average to find outliers."><span class="font-semibold cursor-help underline decoration-dotted">🧠 Memory Efficiency</span></div><span class="font-mono">${fmtN(Math.round(avgItemsPerMB))} items/MB</span></div>
   <p class="text-base-content/50 text-[10px] mb-1">Least efficient indexes (fewest items per MB RAM)</p>
-  <div class="text-[10px] space-y-0.5">${leastMemEff.map(x=>`<div class="flex justify-between"><span class="truncate max-w-[60%]">${x.name}</span><span class="font-mono text-warning">${fmtN(Math.round(x.itemsPerMB))} items/MB</span></div>`).join('')}</div>
+  <div class="text-[10px] space-y-0.5">${leastMemEff.map(x=>`<div class="flex justify-between items-start"><div class="min-w-0 mr-2"><div class="font-semibold truncate">${x.name}</div><div class="text-[9px]">${bscLabel(x)}</div></div><span class="font-mono text-warning whitespace-nowrap">${fmtN(Math.round(x.itemsPerMB))} items/MB</span></div>`).join('')}</div>
   ${showMoreBtn('memEff',allMemEffSorted.length)}
 </div>
 <div class="divider my-0"></div>
@@ -769,10 +771,10 @@ if(statsF.length){
 <div>
   <div class="tooltip tooltip-right" data-tip="Categorizes all indexes by when they were last scanned. Hot = scanned within the last hour (actively used). Warm = within 1 day. Cold = within 1 week. Frozen = never scanned or over 1 week ago. A large Frozen segment means many indexes are consuming resources without serving queries."><span class="font-semibold mb-1 cursor-help underline decoration-dotted">🌡️ Index Activity Distribution</span></div>
   <div class="flex gap-1 w-full h-5 rounded overflow-hidden text-[9px] font-bold text-white text-center leading-5 mt-1">
-    ${hotCount?`<div class="tooltip tooltip-bottom tooltip-success" data-tip="Hot: ${hotCount} indexes scanned within the last hour — actively serving queries"><div class="bg-success h-full flex items-center justify-center" style="flex:${hotCount}">${hotCount}</div></div>`:''}
-    ${warmCount?`<div class="tooltip tooltip-bottom tooltip-info" data-tip="Warm: ${warmCount} indexes scanned within the last day"><div class="bg-info h-full flex items-center justify-center" style="flex:${warmCount}">${warmCount}</div></div>`:''}
-    ${coldCount?`<div class="tooltip tooltip-bottom tooltip-warning" data-tip="Cold: ${coldCount} indexes scanned within the last week — infrequently used"><div class="bg-warning h-full flex items-center justify-center" style="flex:${coldCount}">${coldCount}</div></div>`:''}
-    ${frozenCount?`<div class="tooltip tooltip-bottom tooltip-error" data-tip="Frozen: ${frozenCount} indexes never scanned or inactive for over a week — candidates for removal"><div class="bg-error h-full flex items-center justify-center" style="flex:${frozenCount}">${frozenCount}</div></div>`:''}
+    ${hotCount?`<div class="tooltip tooltip-bottom tooltip-success" data-tip="Hot: ${hotCount} indexes scanned within the last hour — actively serving queries" style="flex:${hotCount}"><div class="bg-success h-full flex items-center justify-center">${hotCount}</div></div>`:''}
+    ${warmCount?`<div class="tooltip tooltip-bottom tooltip-info" data-tip="Warm: ${warmCount} indexes scanned within the last day" style="flex:${warmCount}"><div class="bg-info h-full flex items-center justify-center">${warmCount}</div></div>`:''}
+    ${coldCount?`<div class="tooltip tooltip-bottom tooltip-warning" data-tip="Cold: ${coldCount} indexes scanned within the last week — infrequently used" style="flex:${coldCount}"><div class="bg-warning h-full flex items-center justify-center">${coldCount}</div></div>`:''}
+    ${frozenCount?`<div class="tooltip tooltip-bottom tooltip-error" data-tip="Frozen: ${frozenCount} indexes never scanned or inactive for over a week — candidates for removal" style="flex:${frozenCount}"><div class="bg-error h-full flex items-center justify-center">${frozenCount}</div></div>`:''}
   </div>
   <div class="flex justify-between text-[9px] text-base-content/50 mt-0.5">
     <span>🟢 Hot ${hotCount}</span><span>🔵 Warm ${warmCount}</span><span>🟡 Cold ${coldCount}</span><span>🔴 Frozen ${frozenCount}</span>
