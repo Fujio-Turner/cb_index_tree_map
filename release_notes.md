@@ -1,5 +1,45 @@
 # Release Notes
 
+## v1.2.0 (2026-03-06)
+
+### Issues Fixed
+
+- **#18 — `treemap` => `System Indexes`** ([issue](https://github.com/Fujio-Turner/cb_index_tree_map/issues/18))
+  - Renamed the "Treemap" tab to **📊 System Indexes**.
+  - Replaced the single treemap chart with a **2×2 chart grid**:
+    - **Index Count by Replicas** — Pie chart showing how many indexes have 0, 1, 2, 3+ replicas, using the existing replica color scheme.
+    - **Days Since Last Scan** — Bar chart bucketing indexes by recency (Today, 1–7d, 8–30d, 31–90d, 91d–6mo, 6mo–1y, 1y+, Never), with "Never" highlighted in red.
+    - **Index Breakdown** — Nested pie showing Primary vs Non-Primary (inner ring) and With WHERE vs No WHERE (outer ring).
+    - **Index Count by Collection per Bucket.Scope** — Stacked bar chart with bucket.scope on the x-axis and collections as stacks, sorted alphabetically. Shows unique indexes only (replicas excluded).
+  - Updated all references from "Treemap" to "System Indexes" across tabs, comments, and placeholder text.
+
+- **#16 — Stats API node badges** ([issue](https://github.com/Fujio-Turner/cb_index_tree_map/issues/16))
+  - Node labels in the Stats API tab now display as **color-coded badges** (e.g., `Node 1 of 2`) matching the replica color scheme.
+  - Badges update dynamically when nodes are added or removed via `updateNodeLabels()`.
+  - Node headers in the rendered stats view also show the colored badge with total node count.
+
+- **#15 — Performance Insights show bucket.scope.collection** ([issue](https://github.com/Fujio-Turner/cb_index_tree_map/issues/15))
+  - All 7 insight sections in the Analysis tab's **⚡ Performance Insights** panel now show `bucket.scope.collection` context beneath each index name.
+  - Long keyspace paths are auto-truncated with a hover tooltip showing the full path.
+
+### New Features
+
+- **Unique Only filter** — Added a **Unique Only** checkbox to the global filter bar that removes replica copies, showing only distinct indexes. Applies across System Indexes, Stats API, and Analysis tabs.
+
+### UX Improvements
+
+- `Disk Size` / `Data Size` toggle tooltips updated from "treemap" to "charts".
+- System Indexes load status now shows unique count vs total (including replicas).
+- Activity distribution bar tooltips moved to outer container for better hover behavior.
+- Updated version badge to v1.2.0.
+
+### Stats
+
+- **Files changed:** 1 (`index.html`)
+- **Lines:** +88 / −25
+
+---
+
 ## v1.1.0 (2026-03-03)
 
 ### New Features
