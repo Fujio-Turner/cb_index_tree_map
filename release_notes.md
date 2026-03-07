@@ -1,5 +1,38 @@
 # Release Notes
 
+## v1.3.0 (2026-03-07)
+
+### Issues Fixed
+
+- **#20 — Treemap zoom & pan controls** ([issue](https://github.com/Fujio-Turner/cb_index_tree_map/issues/20))
+  - Added **zoom & pan toolbar** (🏠 ➕ ➖ ⬆️ ⬅️ ➡️ ⬇️) above each Stats API treemap for navigating large index landscapes.
+  - Zoom level badge shows current scale (50%–500%).
+  - Treemaps now use a clipped viewport container with `roam:false` and `nodeClick:false` to prevent built-in drill-down, keeping navigation via the toolbar only.
+  - Clicking any treemap box (including parent groups) highlights and scrolls to the matching table row.
+
+- **#13 — System Indexes tab improvements** ([issue](https://github.com/Fujio-Turner/cb_index_tree_map/issues/13))
+  - Replaced the **Index Count by Replicas** pie chart with a **🏷️ Most Commonly Indexed Fields** word cloud (moved from Analysis tab).
+  - Added **Pie / Bar toggle** to the **Index Count by Bucket** chart — switch between a pie chart (by bucket) and a stacked bar chart (by collection per bucket.scope).
+
+### New Features
+
+- **📦 Index Item Count Distribution** — New chart in the Analysis tab (replacing the word cloud slot) showing how indexes are distributed across 10 percentile buckets by item count. Includes **Bar / Pie toggle** and tooltips with count, min, max, and avg per bucket.
+- **Pie / Bar toggle for Disk & Memory by Bucket** — Analysis tab disk and memory bucket charts now support switching between pie and stacked bar (by scope) views.
+- **`fmtCompact()` utility** — New compact number formatter (e.g., 1.2M, 450K) used in item distribution tooltips.
+
+### UX Improvements
+
+- Word cloud moved from Analysis tab to System Indexes tab for immediate visibility when loading `system:indexes` data.
+- Analysis tab now shows a placeholder prompt when only system data is loaded (no Stats API).
+- Updated version badge to v1.3.0.
+
+### Stats
+
+- **Files changed:** 1 (`index.html`)
+- **Lines:** +129 / −36
+
+---
+
 ## v1.2.0 (2026-03-06)
 
 ### Issues Fixed
