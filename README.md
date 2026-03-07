@@ -23,8 +23,12 @@ CB Index Treemap turns raw Couchbase JSON into interactive treemaps, bar charts,
 
 ## 🚀 What It Can Do For You
 
-### 📊 Treemap Tab
+### 📊 System Indexes Tab
 - Paste your `system:indexes` query output and get an interactive **treemap visualization** of every index organized by **Bucket → Scope → Collection → Index**
+- **🏷️ Word cloud** of most commonly indexed fields — see your hottest fields at a glance
+
+![Word Cloud Screenshot](img/word_cloud.png)
+- **Index Count by Bucket** with **Pie / Bar toggle** — bar view shows stacked collections per bucket.scope
 - Quickly see your index structure at a glance
 
 ### 📈 Stats API Tab
@@ -33,13 +37,14 @@ CB Index Treemap turns raw Couchbase JSON into interactive treemaps, bar charts,
 - **Bar charts** for lowest cache hit % and highest scan latency
 - **Node-level summary cards** showing memory used vs quota, storage allocated, and total disk
 - **📐 Lumpiness Score** — When multiple index nodes are loaded, a composite score (0–100) shows how evenly indexes are distributed across nodes. Weighted by index count balance (30%), disk size balance (30%), memory balance (20%), and replica spread (20%). Color-coded ratings from Excellent to Critical with per-node breakdown details.
+- **Treemap zoom & pan toolbar** — 🏠 reset, ➕/➖ zoom, ⬆️⬅️➡️⬇️ pan with a zoom level badge
 - **Click a treemap box** → table row highlights and scrolls into view. **Click a table row** → treemap box highlights. 🤝
 - **Last Scan timestamps** displayed in **ISO 8601** format for easy comparison
 
 ### 🔍 Analysis Tab
 - **Summary dashboard** — total disk, data, memory, avg fragmentation, avg resident %, never-scanned count
-- **Word cloud** of most commonly indexed fields (from `system:indexes` data)
-- **Pie charts** — disk and memory usage broken down by bucket
+- **📦 Index Item Count Distribution** — bar or pie chart showing how indexes are spread across percentile buckets by item count
+- **Pie / Bar charts** — disk and memory usage broken down by bucket, with toggle to switch between pie and stacked bar (by scope) views
 - **Top 10 / Bottom 10 leaderboards** — largest disk, highest fragmentation, lowest cache hit, highest bloat, most requests, and more
 - **⚠️ Never-scanned indexes list** — indexes burning disk but never queried. Prime candidates for cleanup!
 

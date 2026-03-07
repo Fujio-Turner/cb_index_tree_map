@@ -14,6 +14,8 @@
   .abox{width:100%;height:350px}
   .stats-table-wrap{max-height:400px;overflow:auto}
   .stats-table tr.highlighted{background:#fef3c7!important;outline:2px solid #f59e0b;outline-offset:-2px}
+  .treemap-viewport{overflow:hidden;position:relative;border:1px solid #e5e7eb;border-radius:0.5rem}
+  .treemap-viewport .chart-box{transform-origin:center center;transition:transform 0.2s ease}
 </style>
 </head>
 <body class="bg-base-200 min-h-screen">
@@ -23,7 +25,7 @@
   <div class="flex-1 gap-3">
     <span class="text-xl font-bold text-error">🗺️ CB Index Treemap</span>
     <span class="text-xs text-base-content/50 hidden sm:inline">Visualize & analyze GSI index sizes, performance & capacity</span>
-    <span class="badge badge-ghost badge-sm text-[10px]">v1.2.0</span>
+    <span class="badge badge-ghost badge-sm text-[10px]">v1.3.0</span>
   </div>
   <div class="flex-none">
     <button class="btn btn-ghost btn-sm gap-1" onclick="openFileManager()">💾 <span id="saved-count" class="badge badge-sm badge-ghost">0</span></button>
@@ -211,6 +213,7 @@ function fmt(b){if(b==null||b===0)return'0 B';const k=1024,s=['B','KB','MB','GB'
 function truncPart(s,max){if(s.length<=max)return s;const half=Math.floor((max-2)/2);return s.slice(0,half)+'..'+s.slice(s.length-half)}
 function bscLabel(x){const full=x.bucket+'.'+x.scope+'.'+x.collection;const short=truncPart(x.bucket,6)+'.'+truncPart(x.scope,6)+'.'+truncPart(x.collection,6);const display=full.length<=24?full:short;return'<span class="tooltip tooltip-top z-50" data-tip="'+full+'"><span class="text-base-content/70 cursor-help">'+display+'</span></span>'}
 function fmtN(n){return n==null?'—':n.toLocaleString()}
+function fmtCompact(n){if(n==null)return'—';if(n>=1e9)return(n/1e9).toFixed(2).replace(/\.?0+$/,'')+'B';if(n>=1e6)return(n/1e6).toFixed(1).replace(/\.?0+$/,'')+'M';if(n>=1e3)return(n/1e3).toFixed(1).replace(/\.?0+$/,'')+'K';return n.toString()}
 function fmtNs(ns){if(!ns||ns===0)return'0';const ms=ns/1e6;if(ms<0.001)return ns.toFixed(0)+' ns';if(ms<1)return(ns/1e3).toFixed(1)+' µs';if(ms<1000)return ms.toFixed(1)+' ms';return(ms/1000).toFixed(2)+' s'}
 function fmtScanTime(ns){if(!ns||ns===0)return'<span class="text-base-content/30 italic text-[10px]">never</span>';try{const d=new Date(ns/1e6);return isNaN(d.getTime())?'—':'<span class="text-[10px]">'+d.toISOString()+'</span>'}catch{return'—'}}
 function setStatus(id,m,t){const el=document.getElementById(id);el.textContent=m;el.className='text-xs '+(t==='error'?'text-error':t==='success'?'text-success':'text-base-content/50')}
@@ -350,9 +353,15 @@ function buildTree(fl,useVal){const tree={};fl.forEach(f=>{if(!tree[f.bucket])tr
 // ===== CHARTS =====
 function getLevels(){return[{itemStyle:{borderWidth:0,gapWidth:5},upperLabel:{show:false}},{itemStyle:{gapWidth:2,borderColor:'#ccc'},upperLabel:{show:true,color:'#333'}},{colorSaturation:[.3,.5],itemStyle:{gapWidth:1,borderColor:'#ddd'},upperLabel:{show:true,color:'#333'}},{colorSaturation:[.3,.6],itemStyle:{gapWidth:1,borderColor:'#eee'}}]}
 
+let treemapTransforms={};
+function applyTreemapTransform(nIdx){const el=document.getElementById('ch-'+nIdx);if(!el)return;const t=treemapTransforms[nIdx]||{scale:1,x:0,y:0};el.style.transform=`translate(${t.x}px,${t.y}px) scale(${t.scale})`;const lbl=document.getElementById('tm-zoom-label-'+nIdx);if(lbl)lbl.textContent=Math.round(t.scale*100)+'%'}
+function treemapReset(nIdx){treemapTransforms[nIdx]={scale:1,x:0,y:0};applyTreemapTransform(nIdx)}
+function treemapZoom(nIdx,dir){if(!treemapTransforms[nIdx])treemapTransforms[nIdx]={scale:1,x:0,y:0};const t=treemapTransforms[nIdx];t.scale=dir==='in'?Math.min(t.scale*1.3,5):Math.max(t.scale/1.3,0.5);applyTreemapTransform(nIdx)}
+function treemapPan(nIdx,dx,dy){if(!treemapTransforms[nIdx])treemapTransforms[nIdx]={scale:1,x:0,y:0};const t=treemapTransforms[nIdx];const step=60;t.x+=dx*step;t.y+=dy*step;applyTreemapTransform(nIdx)}
+
 function makeTreemap(elId,data,hasSizes,indexer,nIdx){const el=document.getElementById(elId);if(!el)return;const ch=echarts.init(el);activeCharts.push(ch);
-ch.setOption({title:{text:indexer?`State: ${indexer.indexer_state||'—'} · Mem: ${fmt(indexer.memory_used||0)} / ${fmt(indexer.memory_quota||0)}`:(hasSizes?'':'Equal-sized (no size data)'),left:'center',textStyle:{color:'#888',fontSize:11}},tooltip:{formatter:function(info){const tp=[];for(let i=1;i<info.treePathInfo.length;i++)tp.push(info.treePathInfo[i].name);const m=info.data._meta||{};let h='<b>'+tp.join(' → ')+'</b><br>';if(hasSizes){h+=`Disk: ${fmt(m.disk_size)} · Data: ${fmt(m.data_size)}<br>Frag: ${m.frag_percent}% · Cache: ${m.cache_hit_percent}%<br>Items: ${fmtN(m.items_count)} · Latency: ${fmtNs(m.avg_scan_latency)}`;if(m._replicaTotal>1)h+=`<br>Replica: ${m._replicaIndex}/${m._replicaTotal} · Node: ${m._nodeName}`}else h+=`Type: ${m.type||'—'} · Keys: ${m.keysStr||'—'}`;return h}},series:[{type:'treemap',visibleMin:200,label:{show:true,formatter:p=>hasSizes&&!p.data.children?p.name+'\n'+fmt(p.value):p.name},upperLabel:{show:true,height:20,color:'#333',backgroundColor:'rgba(255,255,255,.7)'},itemStyle:{borderColor:'#fff'},levels:getLevels(),data,breadcrumb:{itemStyle:{color:'#eee',borderColor:'#ccc',textStyle:{color:'#333'}}}}]});
-ch.on('click',p=>{if(!p.data._fullPath)return;const tbl=document.getElementById('tbl-'+nIdx);if(!tbl)return;tbl.querySelectorAll('tr.highlighted').forEach(r=>r.classList.remove('highlighted'));const row=tbl.querySelector(`tr[data-key="${CSS.escape(p.data._fullPath)}"]`);if(row){row.classList.add('highlighted');row.scrollIntoView({behavior:'smooth',block:'center'})}});
+ch.setOption({title:{text:indexer?`State: ${indexer.indexer_state||'—'} · Mem: ${fmt(indexer.memory_used||0)} / ${fmt(indexer.memory_quota||0)}`:(hasSizes?'':'Equal-sized (no size data)'),left:'center',textStyle:{color:'#888',fontSize:11}},tooltip:{formatter:function(info){const tp=[];for(let i=1;i<info.treePathInfo.length;i++)tp.push(info.treePathInfo[i].name);const m=info.data._meta||{};let h='<b>'+tp.join(' → ')+'</b><br>';if(hasSizes){h+=`Disk: ${fmt(m.disk_size)} · Data: ${fmt(m.data_size)}<br>Frag: ${m.frag_percent}% · Cache: ${m.cache_hit_percent}%<br>Items: ${fmtN(m.items_count)} · Latency: ${fmtNs(m.avg_scan_latency)}`;if(m._replicaTotal>1)h+=`<br>Replica: ${m._replicaIndex}/${m._replicaTotal} · Node: ${m._nodeName}`}else h+=`Type: ${m.type||'—'} · Keys: ${m.keysStr||'—'}`;return h}},series:[{type:'treemap',roam:false,nodeClick:false,visibleMin:200,label:{show:true,formatter:p=>hasSizes&&!p.data.children?p.name+'\n'+fmt(p.value):p.name},upperLabel:{show:true,height:20,color:'#333',backgroundColor:'rgba(255,255,255,.7)'},itemStyle:{borderColor:'#fff'},levels:getLevels(),data,breadcrumb:{itemStyle:{color:'#eee',borderColor:'#ccc',textStyle:{color:'#333'}}}}]});
+ch.on('click',p=>{const tbl=document.getElementById('tbl-'+nIdx);if(!tbl)return;tbl.querySelectorAll('tr.highlighted').forEach(r=>r.classList.remove('highlighted'));if(p.data._fullPath){const row=tbl.querySelector(`tr[data-key="${CSS.escape(p.data._fullPath)}"]`);if(row){row.classList.add('highlighted');row.scrollIntoView({behavior:'smooth',block:'center'})}}else if(p.treePathInfo&&p.treePathInfo.length>1){const parts=p.treePathInfo.slice(1).map(n=>n.name);const prefix=parts.join(':');const rows=[...tbl.querySelectorAll('tr[data-key]')].filter(r=>r.dataset.key.startsWith(prefix));if(rows.length){rows[0].classList.add('highlighted');rows[0].scrollIntoView({behavior:'smooth',block:'center'})}}});
 chartIndexMaps.push({nodeIdx:nIdx,chart:ch,data})}
 
 function makeBar(elId,title,labels,values,color,vFmt){const el=document.getElementById(elId);if(!el)return;const ch=echarts.init(el);activeCharts.push(ch);ch.setOption({title:{text:title,left:'center',textStyle:{fontSize:12}},tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:p=>p[0]?`<b>${p[0].name}</b><br>${vFmt?vFmt(p[0].value):p[0].value}`:''}, grid:{left:10,right:20,top:35,bottom:5,containLabel:true},xAxis:{type:'value',axisLabel:{fontSize:10,formatter:vFmt}},yAxis:{type:'category',data:labels,axisLabel:{fontSize:9,width:160,overflow:'truncate'},inverse:true},series:[{type:'bar',data:values,itemStyle:{color,borderRadius:[0,3,3,0]},barMaxWidth:18}]})}
@@ -487,20 +496,16 @@ function makeSystemTable(filtered){
 function renderTreemapView(){const c=document.getElementById('treemap-content');c.innerHTML='';activeCharts=activeCharts.filter(ch=>{try{ch.dispose()}catch{}return false});chartIndexMaps=[];if(!globalSystemFlat.length){c.innerHTML='<div class="text-center py-12 text-base-content/40">No data loaded</div>';return}const f=getFilters();let filtered=globalSystemFlat.filter(i=>matchFilter(i,f));if(f.uniqueOnly)filtered=dedup(filtered);if(!filtered.length){c.innerHTML='<div class="alert alert-warning"><span>No indexes match current filters</span></div>';return}
 // Build chart HTML: 4 charts in a 2x2 grid, then the table
 c.innerHTML=`<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div id="pie-replicas" class="abox"></div></div></div>
+<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><h3 class="font-bold text-sm mb-2">🏷️ Most Commonly Indexed Fields</h3><div id="wc-box-sys" class="abox"></div></div></div>
 <div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div id="bar-last-scan" class="abox"></div></div></div>
 <div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div id="pie-where" class="abox"></div></div></div>
-<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div id="bar-bucket-scope-stacked" class="chart-box"></div></div></div>
+<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center justify-between mb-1"><h3 class="font-bold text-sm">Index Count by Bucket</h3><div class="join"><button class="btn btn-xs join-item" id="idx-count-pie-btn" onclick="switchIdxCountMode('pie')">Pie</button><button class="btn btn-xs join-item btn-active" id="idx-count-bar-btn" onclick="switchIdxCountMode('bar')">Bar</button></div></div><div id="bar-bucket-scope-stacked" class="chart-box"></div></div></div>
 </div>`+makeSystemTable(filtered);
 setTimeout(()=>{renderSystemCharts(filtered)},50)}
 
 function renderSystemCharts(filtered){
-  // 1. Pie: count of indexes by num_replica
-  const replicaCounts={};
-  filtered.forEach(x=>{const r=x.replica||0;replicaCounts[r]=(replicaCounts[r]||0)+1});
-  const replicaKeys=Object.keys(replicaCounts).map(Number).sort((a,b)=>a-b);
-  const replicaPieData=replicaKeys.map(r=>({name:r+' replica'+(r!==1?'s':''),value:replicaCounts[r],itemStyle:{color:r===0?'#ef4444':REPLICA_COLORS[r%REPLICA_COLORS.length]}}));
-  makePie('pie-replicas','Index Count by Replicas',replicaPieData);
+  // 1. Word cloud: most commonly indexed fields
+  renderWordCloud(filtered,'wc-box-sys');
 
   // 2. Bar: days since last scan — filtered by global filters, bucketed into ranges
   const f=getFilters();
@@ -527,15 +532,35 @@ function renderSystemCharts(filtered){
   filtered.forEach(x=>{if(x.isPrimary)primaryCount++;else nonPrimaryCount++;if(x.condition&&x.condition.trim())withWhere++;else noWhere++});
   const pieEl=document.getElementById('pie-where');if(pieEl){const ch=echarts.init(pieEl);activeCharts.push(ch);ch.setOption({title:{text:'Index Breakdown',left:'center',textStyle:{fontSize:12}},tooltip:{trigger:'item',formatter:'{b}: {c} ({d}%)'},legend:{orient:'vertical',left:'left',top:'middle',textStyle:{fontSize:10}},series:[{name:'Type',type:'pie',radius:['0%','35%'],center:['55%','55%'],label:{show:true,position:'inner',fontSize:10,formatter:'{b}\n{d}%'},itemStyle:{borderRadius:3,borderColor:'#fff',borderWidth:2},data:[{name:'Primary',value:primaryCount,itemStyle:{color:'#ef4444'}},{name:'Non-Primary',value:nonPrimaryCount,itemStyle:{color:'#d1d5db'}}]},{name:'WHERE',type:'pie',radius:['45%','62%'],center:['55%','55%'],label:{show:true,formatter:'{b}\n{d}%',fontSize:9},itemStyle:{borderRadius:4,borderColor:'#fff',borderWidth:2},data:[{name:'With WHERE',value:withWhere,itemStyle:{color:'#22c55e'}},{name:'No WHERE',value:noWhere,itemStyle:{color:'#f59e0b'}}]}]})}
 
-  // 4. Stacked bar: bucket.scope on x-axis, stacked by collection, y-axis = unique index count (no replicas)
+  // 4. Index count by bucket — bar (stacked by collection per bucket.scope) or pie (by bucket)
+  idxCountFiltered=filtered;
+  renderIdxCountChart(idxCountMode);
+}
+
+let idxCountMode='bar',idxCountFiltered=null;
+function renderIdxCountChart(mode){
+  const el=document.getElementById('bar-bucket-scope-stacked');if(!el||!idxCountFiltered)return;
+  const existing=echarts.getInstanceByDom(el);if(existing){activeCharts=activeCharts.filter(c=>c!==existing);existing.dispose()}
+  const ch=echarts.init(el);activeCharts.push(ch);
   const seen=new Set();
-  const uniqueFiltered=filtered.filter(x=>{const k=x.bucket+':'+x.scope+':'+x.collection+':'+x.name;if(seen.has(k))return false;seen.add(k);return true});
-  const bsCollMap={};
-  uniqueFiltered.forEach(x=>{const key=x.bucket+'.'+x.scope;if(!bsCollMap[key])bsCollMap[key]={};bsCollMap[key][x.collection]=(bsCollMap[key][x.collection]||0)+1});
-  const bsKeys=Object.keys(bsCollMap).sort();
-  const allCollections=[...new Set(uniqueFiltered.map(x=>x.collection))].sort();
-  const series=allCollections.map(col=>({name:col,type:'bar',stack:'total',data:bsKeys.map(bs=>(bsCollMap[bs]||{})[col]||0),barMaxWidth:40}));
-  const el=document.getElementById('bar-bucket-scope-stacked');if(el){const ch=echarts.init(el);activeCharts.push(ch);ch.setOption({title:{text:'Index Count by Collection per Bucket.Scope',subtext:'(unique indexes only — replicas are not counted)',left:'center',textStyle:{fontSize:12},subtextStyle:{fontSize:10}},tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:function(params){let h='<b>'+params[0].axisValue+'</b><br>';let total=0;params.filter(p=>p.value>0).forEach(p=>{h+=p.marker+' '+p.seriesName+': '+p.value+'<br>';total+=p.value});h+='<b>Total: '+total+'</b>';return h}},legend:{show:allCollections.length<=20,bottom:0,textStyle:{fontSize:9}},grid:{left:10,right:10,top:45,bottom:allCollections.length<=20?30:5,containLabel:true},xAxis:{type:'category',data:bsKeys,axisLabel:{fontSize:9,rotate:bsKeys.length>5?45:0,interval:0}},yAxis:{type:'value',axisLabel:{fontSize:10},minInterval:1},series})}
+  const uniqueFiltered=idxCountFiltered.filter(x=>{const k=x.bucket+':'+x.scope+':'+x.collection+':'+x.name;if(seen.has(k))return false;seen.add(k);return true});
+  if(mode==='pie'){
+    const bucketCounts={};uniqueFiltered.forEach(x=>{bucketCounts[x.bucket]=(bucketCounts[x.bucket]||0)+1});
+    ch.setOption({title:{text:'Index Count by Bucket',subtext:'(unique indexes only — replicas are not counted)',left:'center',textStyle:{fontSize:12},subtextStyle:{fontSize:10}},tooltip:{trigger:'item',formatter:'{b}: {c} ({d}%)'},legend:{orient:'vertical',left:'left',top:'middle',textStyle:{fontSize:10}},series:[{type:'pie',radius:['30%','60%'],center:['55%','55%'],itemStyle:{borderRadius:4,borderColor:'#fff',borderWidth:2},label:{show:true,formatter:'{b}\n{c} ({d}%)',fontSize:9},data:Object.entries(bucketCounts).sort((a,b)=>a[0].localeCompare(b[0])).map(([n,v])=>({name:n,value:v}))}]});
+  } else {
+    const bsCollMap={};
+    uniqueFiltered.forEach(x=>{const key=x.bucket+'.'+x.scope;if(!bsCollMap[key])bsCollMap[key]={};bsCollMap[key][x.collection]=(bsCollMap[key][x.collection]||0)+1});
+    const bsKeys=Object.keys(bsCollMap).sort();
+    const allCollections=[...new Set(uniqueFiltered.map(x=>x.collection))].sort();
+    const series=allCollections.map(col=>({name:col,type:'bar',stack:'total',data:bsKeys.map(bs=>(bsCollMap[bs]||{})[col]||0),barMaxWidth:40}));
+    ch.setOption({title:{text:'Index Count by Collection per Bucket.Scope',subtext:'(unique indexes only — replicas are not counted)',left:'center',textStyle:{fontSize:12},subtextStyle:{fontSize:10}},tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:function(params){let h='<b>'+params[0].axisValue+'</b><br>';let total=0;params.filter(p=>p.value>0).forEach(p=>{h+=p.marker+' '+p.seriesName+': '+p.value+'<br>';total+=p.value});h+='<b>Total: '+total+'</b>';return h}},legend:{show:allCollections.length<=20,bottom:0,textStyle:{fontSize:9}},grid:{left:10,right:10,top:45,bottom:allCollections.length<=20?30:5,containLabel:true},xAxis:{type:'category',data:bsKeys,axisLabel:{fontSize:9,rotate:bsKeys.length>5?45:0,interval:0}},yAxis:{type:'value',axisLabel:{fontSize:10},minInterval:1},series});
+  }
+}
+function switchIdxCountMode(mode){
+  idxCountMode=mode;
+  document.getElementById('idx-count-pie-btn').classList.toggle('btn-active',mode==='pie');
+  document.getElementById('idx-count-bar-btn').classList.toggle('btn-active',mode==='bar');
+  renderIdxCountChart(mode);
 }
 
 function calcLumpinessScore(){
@@ -606,14 +631,20 @@ function renderLumpinessCard(){
 </div></div>`;
 }
 
-function renderStatsView(){const c=document.getElementById('stats-content');c.innerHTML='';activeCharts=activeCharts.filter(ch=>{try{ch.dispose()}catch{}return false});chartIndexMaps=[];if(!globalStatsFlat.length){c.innerHTML='<div class="text-center py-12 text-base-content/40">No data loaded</div>';return}const f=getFilters();
+function renderStatsView(){const c=document.getElementById('stats-content');c.innerHTML='';activeCharts=activeCharts.filter(ch=>{try{ch.dispose()}catch{}return false});chartIndexMaps=[];treemapTransforms={};if(!globalStatsFlat.length){c.innerHTML='<div class="text-center py-12 text-base-content/40">No data loaded</div>';return}const f=getFilters();
 // Lumpiness Score card (only when multiple nodes)
 if(globalStatsFlat.length>1){const lumpCard=document.createElement('div');lumpCard.innerHTML=renderLumpinessCard();while(lumpCard.firstChild)c.appendChild(lumpCard.firstChild)}
 globalStatsFlat.forEach((node,i)=>{if(!matchNodeFilter(node.nodeName,f))return;let filtered=node.flat.filter(x=>matchFilter(x,f)).map(x=>({...x,value:x[currentMetric]||x.disk_size||x.data_size||0}));if(f.uniqueOnly)filtered=dedup(filtered);if(!filtered.length)return;const totalDisk=filtered.reduce((s,x)=>s+(x.disk_size||0),0);const sec=document.createElement('div');sec.className='card bg-base-100 shadow-sm mb-4';
 sec.innerHTML=`<div class="card-body p-3">
 <div class="flex justify-between items-center mb-2"><h3 class="font-bold text-sm"><span class="badge text-white font-bold" style="background:${REPLICA_COLORS[i%REPLICA_COLORS.length]};border-color:${REPLICA_COLORS[i%REPLICA_COLORS.length]}">Node ${i+1} of ${globalStatsFlat.length}</span> ${node.nodeName}</h3><div class="flex gap-2">${node.indexer?`<div class="badge badge-${node.indexer.indexer_state==='Active'?'success':'warning'} badge-sm">${node.indexer.indexer_state}</div>`:''}<div class="badge badge-ghost badge-sm">${filtered.length} indexes · ${fmt(totalDisk)}</div></div></div>
 ${node.indexer?`<div class="stats stats-horizontal shadow-sm mb-3 w-full"><div class="stat py-2 px-4" title="Total RAM consumed by all indexes on this node"><div class="stat-title text-[10px]">Memory Used</div><div class="stat-value text-base">${fmt(node.indexer.memory_used||0)}</div><div class="stat-desc text-[10px]">of ${fmt(node.indexer.memory_quota||0)} quota</div></div><div class="stat py-2 px-4" title="Percentage of the node's index memory quota currently in use. High values mean you're running out of room"><div class="stat-title text-[10px]">Memory Quota Used</div><div class="stat-value text-base ${(node.indexer.memory_used||0)/(node.indexer.memory_quota||1)>.9?'text-error':(node.indexer.memory_used||0)/(node.indexer.memory_quota||1)>.7?'text-warning':'text-success'}">${((node.indexer.memory_used||0)/(node.indexer.memory_quota||1)*100).toFixed(1)}%</div></div><div class="stat py-2 px-4" title="Total storage allocated by the indexer on this node (includes internal buffers and caches)"><div class="stat-title text-[10px]">Storage Allocated</div><div class="stat-value text-base">${fmt(node.indexer.memory_total_storage||0)}</div></div><div class="stat py-2 px-4" title="Combined on-disk size of all indexes on this node"><div class="stat-title text-[10px]">Total Disk</div><div class="stat-value text-base">${fmt(totalDisk)}</div></div></div>`:''}
-<div id="ch-${i}" class="chart-box"></div>
+<div class="flex items-center gap-1 mb-1 flex-wrap">
+<div class="join"><button class="btn btn-ghost btn-xs join-item" onclick="treemapReset(${i})" title="Reset zoom & pan to default">🏠</button><button class="btn btn-ghost btn-xs join-item" onclick="treemapZoom(${i},'in')" title="Zoom in">➕</button><button class="btn btn-ghost btn-xs join-item" onclick="treemapZoom(${i},'out')" title="Zoom out">➖</button></div>
+<div class="join ml-1"><button class="btn btn-ghost btn-xs join-item" onclick="treemapPan(${i},0,-1)" title="Pan up">⬆️</button><button class="btn btn-ghost btn-xs join-item" onclick="treemapPan(${i},-1,0)" title="Pan left">⬅️</button><button class="btn btn-ghost btn-xs join-item" onclick="treemapPan(${i},1,0)" title="Pan right">➡️</button><button class="btn btn-ghost btn-xs join-item" onclick="treemapPan(${i},0,1)" title="Pan down">⬇️</button></div>
+<span id="tm-zoom-label-${i}" class="badge badge-ghost badge-xs font-mono ml-1">100%</span>
+<span class="text-[10px] text-base-content/40 ml-1">Click highlights table row · Use buttons to zoom & pan</span>
+</div>
+<div class="treemap-viewport"><div id="ch-${i}" class="chart-box"></div></div>
 <div class="grid grid-cols-2 gap-0 border-t border-base-200"><div id="bar-cache-${i}" class="chart-half border-r border-base-200"></div><div id="bar-latency-${i}" class="chart-half"></div></div>
 ${makeTable(i,filtered)}</div>`;
 c.appendChild(sec);
@@ -655,8 +686,9 @@ ${(()=>{const lump=calcLumpinessScore();if(!lump)return'';const sc=lump.score;co
 </div></div>`;
 }
 
-// Word cloud (half width) + Performance Insights (half width)
-if(sysF.length)html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><h3 class="font-bold text-sm mb-2">🏷️ Most Commonly Indexed Fields</h3><div id="wc-box" class="abox"></div></div></div>`;
+// Index Item Count Distribution (half width) + Performance Insights (half width)
+if(statsF.length)html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center justify-between mb-2"><h3 class="font-bold text-sm">📦 Index Item Count Distribution</h3><div class="join"><button class="btn btn-xs join-item btn-active" id="item-dist-bar-btn" onclick="switchItemDistMode('bar')">Bar</button><button class="btn btn-xs join-item" id="item-dist-pie-btn" onclick="switchItemDistMode('pie')">Pie</button></div></div><div id="bar-item-dist" class="abox"></div></div></div>`;
+else if(sysF.length)html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3 flex items-center justify-center text-base-content/40 text-sm">Load <b class="mx-1">Stats API</b> data to see Item Count Distribution</div></div>`;
 
 // Performance Insights panel (right half beside word cloud)
 if(statsF.length){
@@ -794,17 +826,15 @@ if(statsF.length){
 </div></div></div>`;
 } else if(sysF.length) {
   // If only system data, no stats — fill the right column with a prompt
-  html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3 flex items-center justify-center text-base-content/40 text-sm">Load <b class="mx-1">Stats API</b> data to see Performance Insights</div></div>`;
+  html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3 flex items-center justify-center text-base-content/40 text-sm">Load <b class="mx-1">Stats API</b> data to see Performance Insights and Item Count Distribution</div></div>`;
 }
 
 if(statsF.length){
-  // Pie: Disk by bucket
-  const bucketDisk={};statsF.forEach(x=>{bucketDisk[x.bucket]=(bucketDisk[x.bucket]||0)+(x.disk_size||0)});
-  html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center gap-2 mb-1"><h3 class="font-bold text-sm">Disk Usage by Bucket</h3>${nodeCountBadges(statsF)}</div><div id="pie-disk" class="abox"></div></div></div>`;
+  // Disk by bucket (pie/bar toggle)
+  html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center justify-between mb-1"><div class="flex items-center gap-2"><h3 class="font-bold text-sm">Disk Usage by Bucket</h3>${nodeCountBadges(statsF)}</div><div class="join"><button class="btn btn-xs join-item btn-active" id="disk-bucket-pie-btn" onclick="switchBucketChartMode('disk','pie')">Pie</button><button class="btn btn-xs join-item" id="disk-bucket-bar-btn" onclick="switchBucketChartMode('disk','bar')">Bar</button></div></div><div id="pie-disk" class="abox"></div></div></div>`;
 
-  // Pie: Memory by bucket
-  const bucketMem={};statsF.forEach(x=>{bucketMem[x.bucket]=(bucketMem[x.bucket]||0)+(x.memory_used||0)});
-  html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center gap-2 mb-1"><h3 class="font-bold text-sm">Memory Usage by Bucket</h3>${nodeCountBadges(statsF)}</div><div id="pie-mem" class="abox"></div></div></div>`;
+  // Memory by bucket (pie/bar toggle)
+  html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center justify-between mb-1"><div class="flex items-center gap-2"><h3 class="font-bold text-sm">Memory Usage by Bucket</h3>${nodeCountBadges(statsF)}</div><div class="join"><button class="btn btn-xs join-item btn-active" id="mem-bucket-pie-btn" onclick="switchBucketChartMode('mem','pie')">Pie</button><button class="btn btn-xs join-item" id="mem-bucket-bar-btn" onclick="switchBucketChartMode('mem','bar')">Bar</button></div></div><div id="pie-mem" class="abox"></div></div></div>`;
 
   // Bar: Disk vs In-Memory
   const topMemItems=[...statsF].sort((a,b)=>(b.disk_size||0)-(a.disk_size||0)).slice(0,15);
@@ -852,12 +882,11 @@ html+='</div>';c.innerHTML=html;
 
 // Render charts after DOM
 setTimeout(()=>{
-  if(sysF.length)renderWordCloud(sysF);
+  if(statsF.length){itemDistBuckets=null;renderItemDistChart(statsF,itemDistMode)}
   if(statsF.length){
-    const bucketDisk={};statsF.forEach(x=>{bucketDisk[x.bucket]=(bucketDisk[x.bucket]||0)+(x.disk_size||0)});
-    makePie('pie-disk','Disk Usage by Bucket',Object.entries(bucketDisk).map(([n,v])=>({name:n,value:v})));
-    const bucketMem={};statsF.forEach(x=>{bucketMem[x.bucket]=(bucketMem[x.bucket]||0)+(x.memory_used||0)});
-    makePie('pie-mem','Memory Usage by Bucket',Object.entries(bucketMem).map(([n,v])=>({name:n,value:v})));
+    bucketChartStatsF=statsF;
+    renderBucketChart('disk',bucketChartModes.disk);
+    renderBucketChart('mem',bucketChartModes.mem);
     // Stacked bar: Disk vs In-Memory
     const topMem=[...statsF].sort((a,b)=>(b.disk_size||0)-(a.disk_size||0)).slice(0,15);
     makeStackedDiskMemBar('bar-frag',topMem);
@@ -867,7 +896,71 @@ setTimeout(()=>{
   }
 },100)}
 
-function renderWordCloud(sysData){const el=document.getElementById('wc-box');if(!el)return;const fc={};sysData.forEach(idx=>{(idx.keys||[]).forEach(rk=>{let field=rk.replace(/`/g,'').trim();const ms=field.match(/[a-zA-Z_][a-zA-Z0-9_]*/g);if(ms)ms.forEach(m=>{const skip=['all','array','for','in','end','meta','id','xattrs','op','name','val','least','ifmissing','object_pairs','null','desc','asc','include','missing','type'];if(!skip.includes(m.toLowerCase())&&m.length>1)fc[m]=(fc[m]||0)+1})})});const words=Object.entries(fc).map(([n,c])=>({name:n,value:c})).sort((a,b)=>b.value-a.value);if(!words.length){el.innerHTML='<div class="flex items-center justify-center h-full text-base-content/30">No indexed fields found</div>';return}const ch=echarts.init(el);activeCharts.push(ch);ch.setOption({tooltip:{formatter:p=>`<b>${p.name}</b><br>Used in ${p.value} index${p.value>1?'es':''}`},series:[{type:'wordCloud',shape:'circle',left:'center',top:'center',width:'90%',height:'85%',sizeRange:[16,68],rotationRange:[-30,30],rotationStep:15,gridSize:8,drawOutOfBound:false,textStyle:{fontFamily:'sans-serif',fontWeight:'bold',color:()=>['#c0392b','#e67e22','#2980b9','#27ae60','#8e44ad','#d35400','#16a085','#2c3e50','#f39c12','#7f8c8d'][Math.floor(Math.random()*10)]},emphasis:{textStyle:{shadowBlur:10,shadowColor:'rgba(0,0,0,.2)'}},data:words}]})}
+let bucketChartModes={disk:'pie',mem:'pie'},bucketChartStatsF=null;
+function renderBucketChart(which,mode){
+  const elId=which==='disk'?'pie-disk':'pie-mem';
+  const el=document.getElementById(elId);if(!el||!bucketChartStatsF)return;
+  const metric=which==='disk'?'disk_size':'memory_used';
+  const title=which==='disk'?'Disk Usage by Bucket':'Memory Usage by Bucket';
+  const existing=echarts.getInstanceByDom(el);if(existing){activeCharts=activeCharts.filter(c=>c!==existing);existing.dispose()}
+  const ch=echarts.init(el);activeCharts.push(ch);
+  const sf=bucketChartStatsF;
+  if(mode==='pie'){
+    const agg={};sf.forEach(x=>{agg[x.bucket]=(agg[x.bucket]||0)+(x[metric]||0)});
+    ch.setOption({title:{text:title,left:'center',textStyle:{fontSize:12}},tooltip:{trigger:'item',formatter:'{b}: '+'{c}'+' ({d}%)'},legend:{orient:'vertical',left:'left',top:'middle',textStyle:{fontSize:10}},series:[{type:'pie',radius:['30%','60%'],center:['55%','55%'],itemStyle:{borderRadius:4,borderColor:'#fff',borderWidth:2},label:{show:true,formatter:function(p){return p.name+'\n'+fmt(p.value)},fontSize:9},tooltip:{formatter:function(p){return'<b>'+p.name+'</b><br>'+fmt(p.value)+' ('+p.percent+'%)'}},data:Object.entries(agg).sort((a,b)=>a[0].localeCompare(b[0])).map(([n,v])=>({name:n,value:v}))}]});
+  } else {
+    const bucketScopeMap={};
+    sf.forEach(x=>{const bk=x.bucket;if(!bucketScopeMap[bk])bucketScopeMap[bk]={};bucketScopeMap[bk][x.scope]=(bucketScopeMap[bk][x.scope]||0)+(x[metric]||0)});
+    const bucketKeys=Object.keys(bucketScopeMap).sort();
+    const allScopes=[...new Set(sf.map(x=>x.scope))].sort();
+    const series=allScopes.map(sc=>({name:sc,type:'bar',stack:'total',data:bucketKeys.map(bk=>(bucketScopeMap[bk]||{})[sc]||0),barMaxWidth:40}));
+    ch.setOption({title:{text:title+' (by Scope)',left:'center',textStyle:{fontSize:12}},tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:function(params){let h='<b>'+params[0].axisValue+'</b><br>';let total=0;params.filter(p=>p.value>0).forEach(p=>{h+=p.marker+' '+p.seriesName+': '+fmt(p.value)+'<br>';total+=p.value});h+='<b>Total: '+fmt(total)+'</b>';return h}},legend:{show:allScopes.length<=20,bottom:0,textStyle:{fontSize:9}},grid:{left:10,right:10,top:35,bottom:allScopes.length<=20?30:5,containLabel:true},xAxis:{type:'category',data:bucketKeys,axisLabel:{fontSize:9,rotate:bucketKeys.length>5?45:0,interval:0}},yAxis:{type:'value',axisLabel:{fontSize:10,formatter:fmt}},series});
+  }
+}
+function switchBucketChartMode(which,mode){
+  bucketChartModes[which]=mode;
+  document.getElementById(which+'-bucket-pie-btn').classList.toggle('btn-active',mode==='pie');
+  document.getElementById(which+'-bucket-bar-btn').classList.toggle('btn-active',mode==='bar');
+  renderBucketChart(which,mode);
+}
+
+let itemDistBuckets=null,itemDistMaxItems=0,itemDistMode='bar',itemDistStatsF=null;
+function buildItemDistBuckets(statsF){
+  const maxItems=Math.max(...statsF.map(x=>x.items_count||0),1);
+  const buckets=[];
+  for(let i=9;i>=0;i--){
+    const lo=i*10,hi=(i+1)*10;
+    const loVal=maxItems*lo/100,hiVal=maxItems*hi/100;
+    const inBucket=statsF.filter(x=>{const c=x.items_count||0;if(i===9)return c>=loVal&&c<=hiVal;return c>=loVal&&c<hiVal});
+    const counts=inBucket.map(x=>x.items_count||0);
+    const sum=counts.reduce((s,v)=>s+v,0);
+    buckets.push({label:hi+'-'+lo+'%',count:inBucket.length,max:counts.length?Math.max(...counts):0,min:counts.length?Math.min(...counts):0,avg:counts.length?Math.round(sum/counts.length):0});
+  }
+  buckets.reverse();
+  return{buckets,maxItems};
+}
+function renderItemDistChart(statsF,mode){
+  const el=document.getElementById('bar-item-dist');if(!el)return;
+  itemDistStatsF=statsF;
+  if(!itemDistBuckets||mode==='rebuild'){const r=buildItemDistBuckets(statsF);itemDistBuckets=r.buckets;itemDistMaxItems=r.maxItems}
+  const m=mode||itemDistMode;itemDistMode=m;
+  const existing=echarts.getInstanceByDom(el);if(existing){activeCharts=activeCharts.filter(c=>c!==existing);existing.dispose()}
+  const ch=echarts.init(el);activeCharts.push(ch);
+  const buckets=itemDistBuckets,maxItems=itemDistMaxItems;
+  const ttFmt=function(b){return'Count: '+b.count+' indexes<br>Max: '+fmtCompact(b.max)+'<br>Min: '+fmtCompact(b.min)+'<br>Avg: '+fmtCompact(b.avg)};
+  if(m==='pie'){
+    ch.setOption({title:{text:'Index Size Distribution by Item Count',subtext:'Largest index = 100% ('+fmtCompact(maxItems)+' items)',left:'center',textStyle:{fontSize:12},subtextStyle:{fontSize:10}},tooltip:{trigger:'item',formatter:function(p){const b=buckets[p.dataIndex];return'<b>'+b.label+'</b><br>'+ttFmt(b)}},legend:{show:false},series:[{type:'pie',radius:['25%','58%'],center:['50%','55%'],itemStyle:{borderRadius:4,borderColor:'#fff',borderWidth:2},label:{show:true,formatter:function(p){return p.value>0?p.name+'\n'+p.value:''},fontSize:9},data:buckets.filter(b=>b.count>0).map(b=>({name:b.label,value:b.count}))}]});
+  } else {
+    ch.setOption({title:{text:'Index Size Distribution by Item Count',subtext:'Largest index = 100% ('+fmtCompact(maxItems)+' items)',left:'center',textStyle:{fontSize:12},subtextStyle:{fontSize:10}},tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:function(p){if(!p.length||!p[0])return'';const b=buckets[p[0].dataIndex];return'<b>'+b.label+'</b><br>'+ttFmt(b)}},grid:{left:10,right:10,top:50,bottom:5,containLabel:true},xAxis:{type:'category',data:buckets.map(b=>b.label),axisLabel:{fontSize:10,interval:0,rotate:0}},yAxis:{type:'value',axisLabel:{fontSize:10},minInterval:1,name:'# of Indexes',nameTextStyle:{fontSize:10}},series:[{type:'bar',data:buckets.map(b=>({value:b.count,itemStyle:{color:b.count>0?'#3b82f6':'#e5e7eb'}})),barMaxWidth:36,label:{show:true,position:'top',fontSize:10,formatter:p=>p.value>0?p.value:''}}]});
+  }
+}
+function switchItemDistMode(mode){
+  document.getElementById('item-dist-bar-btn').classList.toggle('btn-active',mode==='bar');
+  document.getElementById('item-dist-pie-btn').classList.toggle('btn-active',mode==='pie');
+  if(itemDistStatsF)renderItemDistChart(itemDistStatsF,mode);
+}
+
+function renderWordCloud(sysData,targetId){const el=document.getElementById(targetId||'wc-box');if(!el)return;const fc={};sysData.forEach(idx=>{(idx.keys||[]).forEach(rk=>{let field=rk.replace(/`/g,'').trim();const ms=field.match(/[a-zA-Z_][a-zA-Z0-9_]*/g);if(ms)ms.forEach(m=>{const skip=['all','array','for','in','end','meta','id','xattrs','op','name','val','least','ifmissing','object_pairs','null','desc','asc','include','missing','type'];if(!skip.includes(m.toLowerCase())&&m.length>1)fc[m]=(fc[m]||0)+1})})});const words=Object.entries(fc).map(([n,c])=>({name:n,value:c})).sort((a,b)=>b.value-a.value);if(!words.length){el.innerHTML='<div class="flex items-center justify-center h-full text-base-content/30">No indexed fields found</div>';return}const ch=echarts.init(el);activeCharts.push(ch);ch.setOption({tooltip:{formatter:p=>`<b>${p.name}</b><br>Used in ${p.value} index${p.value>1?'es':''}`},series:[{type:'wordCloud',shape:'circle',left:'center',top:'center',width:'90%',height:'85%',sizeRange:[16,68],rotationRange:[-30,30],rotationStep:15,gridSize:8,drawOutOfBound:false,textStyle:{fontFamily:'sans-serif',fontWeight:'bold',color:()=>['#c0392b','#e67e22','#2980b9','#27ae60','#8e44ad','#d35400','#16a085','#2c3e50','#f39c12','#7f8c8d'][Math.floor(Math.random()*10)]},emphasis:{textStyle:{shadowBlur:10,shadowColor:'rgba(0,0,0,.2)'}},data:words}]})}
 
 window.addEventListener('resize',()=>activeCharts.forEach(c=>c.resize()));
 
