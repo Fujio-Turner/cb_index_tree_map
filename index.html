@@ -141,6 +141,17 @@
   </div>
 </div>
 
+<!-- Index Stats Detail Modal -->
+<dialog id="index-stats-modal" class="modal">
+  <div class="modal-box max-w-5xl max-h-[90vh]">
+    <form method="dialog"><button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">x</button></form>
+    <h3 id="index-stats-modal-title" class="font-bold text-lg mb-1"></h3>
+    <p id="index-stats-modal-path" class="text-xs text-base-content/50 mb-3"></p>
+    <div id="index-stats-modal-body" class="overflow-y-auto max-h-[75vh]"></div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
 <!-- Insight Detail Modal -->
 <dialog id="insight-modal" class="modal">
   <div class="modal-box max-w-3xl max-h-[85vh]">
@@ -321,7 +332,7 @@ function expandAllNodes(){document.querySelectorAll('#stats-nodes .stats-node-in
 // ===== PARSING =====
 function parseSystemJSON(js){let d;try{d=JSON.parse(js)}catch{try{d=JSON.parse('['+js+']')}catch{throw new Error('Invalid JSON')}}if(!Array.isArray(d)){if(d.results)d=d.results;else throw new Error('Expected array')}const flat=[];d.forEach(r=>{const idx=r.indexes||r;if(!idx.name)return;const isFTS=idx.using==='fts',bucket=idx.bucket_id||idx.keyspace_id||'unknown',scope=idx.scope_id||'_default',collection=idx.bucket_id?idx.keyspace_id:'_default',dn=isFTS?idx.name+' [FTS]':idx.name;flat.push({fullKey:`${bucket}:${scope}:${collection}:${dn}`,bucket,scope,collection,name:dn,value:1,type:idx.using||'gsi',state:idx.state||'unknown',replica:(idx.metadata&&idx.metadata.num_replica)||0,condition:idx.condition||'',keys:idx.index_key||[],keysStr:(idx.index_key||[]).join(', '),isPrimary:!!idx.is_primary,last_known_scan_time:(idx.metadata&&idx.metadata.stats&&idx.metadata.stats.last_known_scan_time)||0})});return flat}
 
-function parseStatsNodeJSON(js,metric){let d;try{d=JSON.parse(js)}catch{throw new Error('Invalid JSON')}let indexer=null;const flat=[];for(const[key,s]of Object.entries(d)){if(key==='indexer'){indexer=s;continue}const p=key.split(':');let bucket,scope,collection,name;if(p.length===2){bucket=p[0];scope='_default';collection='_default';name=p[1]}else if(p.length===4){bucket=p[0];scope=p[1];collection=p[2];name=p[3]}else{bucket=p[0];scope=p.length>2?p[1]:'_default';collection=p.length>3?p[2]:'_default';name=p[p.length-1]}const ds=s.disk_size||0,da=s.data_size||0;flat.push({fullKey:key,bucket,scope,collection,name,value:s[metric]||ds||da||0,disk_size:ds,data_size:da,bloat_ratio:da>0?ds/da:0,items_count:s.items_count||0,frag_percent:s.frag_percent||0,resident_percent:s.resident_percent!=null?s.resident_percent:null,memory_used:s.memory_used||0,avg_item_size:s.avg_item_size||0,recs_in_mem:s.recs_in_mem||0,recs_on_disk:s.recs_on_disk||0,cache_hit_percent:s.cache_hit_percent||0,num_docs_pending:s.num_docs_pending||0,num_docs_queued:s.num_docs_queued||0,num_requests:s.num_requests||0,num_rows_returned:s.num_rows_returned||0,num_docs_indexed:s.num_docs_indexed||0,avg_scan_latency:s.avg_scan_latency||0,last_known_scan_time:s.last_known_scan_time||0,total_scan_duration:s.total_scan_duration||0,scan_bytes_read:s.scan_bytes_read||0})}return{indexer,flat}}
+function parseStatsNodeJSON(js,metric){let d;try{d=JSON.parse(js)}catch{throw new Error('Invalid JSON')}let indexer=null;const flat=[];for(const[key,s]of Object.entries(d)){if(key==='indexer'){indexer=s;continue}const p=key.split(':');let bucket,scope,collection,name;if(p.length===2){bucket=p[0];scope='_default';collection='_default';name=p[1]}else if(p.length===4){bucket=p[0];scope=p[1];collection=p[2];name=p[3]}else{bucket=p[0];scope=p.length>2?p[1]:'_default';collection=p.length>3?p[2]:'_default';name=p[p.length-1]}const ds=s.disk_size||0,da=s.data_size||0;flat.push({fullKey:key,bucket,scope,collection,name,value:s[metric]||ds||da||0,disk_size:ds,data_size:da,bloat_ratio:da>0?ds/da:0,items_count:s.items_count||0,frag_percent:s.frag_percent||0,resident_percent:s.resident_percent!=null?s.resident_percent:null,memory_used:s.memory_used||0,avg_item_size:s.avg_item_size||0,recs_in_mem:s.recs_in_mem||0,recs_on_disk:s.recs_on_disk||0,cache_hit_percent:s.cache_hit_percent||0,cache_hits:s.cache_hits||0,cache_misses:s.cache_misses||0,num_docs_pending:s.num_docs_pending||0,num_docs_queued:s.num_docs_queued||0,num_requests:s.num_requests||0,num_rows_returned:s.num_rows_returned||0,num_docs_indexed:s.num_docs_indexed||0,num_items_flushed:s.num_items_flushed||0,num_pending_requests:s.num_pending_requests||0,num_scan_errors:s.num_scan_errors||0,num_scan_timeouts:s.num_scan_timeouts||0,avg_scan_latency:s.avg_scan_latency||0,avg_drain_rate:s.avg_drain_rate||0,last_known_scan_time:s.last_known_scan_time||0,total_scan_duration:s.total_scan_duration||0,scan_bytes_read:s.scan_bytes_read||0,initial_build_progress:s.initial_build_progress!=null?s.initial_build_progress:100,avg_array_length:s.avg_array_length||0,docid_count:s.docid_count||0})}return{indexer,flat}}
 
 // ===== REPLICA MAP =====
 const REPLICA_COLORS=['#3b82f6','#22c55e','#f59e0b','#ef4444','#8b5cf6','#ec4899','#14b8a6','#f97316','#06b6d4','#84cc16'];
@@ -411,6 +422,7 @@ let h=`<div class="stats-table-wrap"><table class="table table-xs table-pin-rows
 <th data-col="num_docs_pending" class="cursor-pointer hover:bg-base-300" title="Documents waiting to be indexed. Non-zero means the index is behind on mutations">Pending</th>
 <th data-col="num_requests" class="cursor-pointer hover:bg-base-300" title="Total number of scan requests this index has served">Reqs</th>
 <th data-col="last_known_scan_time" class="cursor-pointer hover:bg-base-300" title="Timestamp of the last scan against this index. 'never' means the index has never been queried">Last Scan</th>
+<th title="View detailed stats overview for this index">Details</th>
 </tr></thead><tbody>`;
 fl.forEach(f=>{const bw=Math.max(2,Math.round((f.disk_size||0)/mx*50));const fp=`${f.bucket}:${f.scope}:${f.collection}:${f.name}`;
 h+=`<tr data-key="${fp}" class="hover:bg-warning/10 cursor-pointer" onclick="onRowClick(this,'${nIdx}')">
@@ -428,12 +440,13 @@ h+=`<tr data-key="${fp}" class="hover:bg-warning/10 cursor-pointer" onclick="onR
 <td class="font-mono text-xs text-right" data-sort="${f.avg_scan_latency||0}">${fmtNs(f.avg_scan_latency)}</td>
 <td class="font-mono text-xs text-right" data-sort="${f.num_docs_pending||0}">${fmtN(f.num_docs_pending||0)}</td>
 <td class="font-mono text-xs text-right" data-sort="${f.num_requests||0}">${fmtN(f.num_requests)}</td>
-<td class="font-mono text-xs text-right" data-sort="${f.last_known_scan_time||0}">${fmtScanTime(f.last_known_scan_time)}</td></tr>`});
+<td class="font-mono text-xs text-right" data-sort="${f.last_known_scan_time||0}">${fmtScanTime(f.last_known_scan_time)}</td>
+<td><button class="btn btn-xs btn-outline btn-info" onclick="event.stopPropagation();showIndexStats(${JSON.stringify(f.fullKey).replace(/"/g,'&quot;')},'${nIdx}')">Stats</button></td></tr>`});
 h+=`<tr class="font-bold bg-base-200 border-t-2 border-base-300"><td>TOTAL (${fl.length})</td><td></td><td></td><td></td><td></td>
 <td class="font-mono text-xs text-right">${fmt(tD)}</td><td class="font-mono text-xs text-right">${fmt(tDa)}</td>
 <td class="font-mono text-xs text-right">${tDa>0?(tD/tDa).toFixed(1)+'x':''}</td><td></td>
 <td class="font-mono text-xs text-right">${fmtN(tI)}</td><td></td><td class="font-mono text-xs text-right">${fmt(tM)}</td>
-<td></td><td></td><td></td><td></td><td></td></tr>`;
+<td></td><td></td><td></td><td></td><td></td><td></td></tr>`;
 return h+'</tbody></table></div>'}
 
 // Column sorting
@@ -1966,6 +1979,269 @@ function copyPlanBAlter(){
     const btn=el.closest('div').querySelector('.btn-info');
     if(btn){btn.textContent='Copied!';setTimeout(()=>{btn.textContent='Copy'},2000)}
   });
+}
+
+// ===== INDEX STATS DETAIL MODAL =====
+const STAT_TOOLTIPS={
+  disk_size:'Total disk file size consumed by this index (bytes). Includes data, metadata, fragmentation overhead, and internal file structures.',
+  data_size:'The size of indexable data maintained for this index (bytes). This is the actual useful data without overhead — compare with disk_size to see waste.',
+  memory_used:'Amount of RAM currently consumed by this index (bytes). Indexes resident in memory serve scans faster.',
+  items_count:'Number of items (index entries) currently in this index. For array indexes, one document can produce multiple items.',
+  frag_percent:'Percentage of the index disk file that is fragmented (wasted space from updates/deletes). High fragmentation wastes disk and may slow scans. At small sizes (<100 KB), static file overhead inflates this.',
+  resident_percent:'Percentage of index data kept in memory (Enterprise Edition). 100% = fully in RAM for fastest scans. Low values mean disk I/O on every scan.',
+  cache_hit_percent:'Percentage of memory accesses served from the managed cache vs disk (Enterprise Edition). Higher is better — low values mean frequent slow disk reads.',
+  cache_hits:'Number of accesses to this index data that were served from RAM cache. Higher is better.',
+  cache_misses:'Number of accesses to this index data that required reading from disk. Each miss adds latency.',
+  bloat_ratio:'Disk Size ÷ Data Size. 1.0x means no overhead; higher values indicate wasted space from fragmentation, metadata, or internal file padding.',
+  avg_item_size:'Average size of the index keys (bytes). Large keys consume more memory and disk per item.',
+  avg_scan_latency:'Average time to serve one scan request (nanoseconds). Lower is better. High latency often correlates with low cache hit % or high fragmentation.',
+  total_scan_duration:'Total cumulative time spent scanning this index since last indexer startup (nanoseconds). Useful for identifying indexes that consume the most scan CPU time.',
+  scan_bytes_read:'Total bytes of index data read during scans since last startup. High values indicate heavy I/O — consider tighter queries or covered indexes.',
+  num_requests:'Total number of scan requests served by this index since last indexer startup.',
+  num_rows_returned:'Total number of rows returned across all scans since last startup. Compare with num_requests to get avg rows per scan.',
+  num_docs_indexed:'Number of documents indexed by this index since last startup. Reflects the mutation processing workload.',
+  num_docs_pending:'Number of documents waiting to be indexed. Non-zero means the index is behind on mutations and queries may return stale data.',
+  num_docs_queued:'Number of documents queued to be indexed (in the internal queue). Together with pending, shows the total indexing backlog.',
+  num_items_flushed:'Number of items flushed from memory to disk storage. Indicates how much data has been persisted.',
+  num_pending_requests:'Number of scan requests received but not yet served. Non-zero during high load indicates the index is a bottleneck.',
+  num_scan_errors:'Number of scan requests that failed due to errors (not timeouts). Non-zero may indicate data corruption or resource issues.',
+  num_scan_timeouts:'Number of scan requests that timed out waiting for snapshots or during scan execution. High values indicate performance problems.',
+  recs_in_mem:'Number of index records stored in memory (Enterprise Edition, standard storage). For memory-optimized storage, same as items_count.',
+  recs_on_disk:'Number of index records stored on disk (Enterprise Edition, standard storage). For memory-optimized storage, this is 0.',
+  avg_drain_rate:'Average number of items flushed from memory to disk per second. Higher rates during heavy writes are normal.',
+  last_known_scan_time:'Timestamp of the last scan request (Unix nanoseconds). Persisted every 15 minutes. Useful for finding unused indexes.',
+  initial_build_progress:'Percentage of initial index build completed. 100 = fully built and ready. Less than 100 means the index is still building.',
+  avg_array_length:'(Array indexes only) Average number of items indexed per document. High values mean one document generates many index entries.',
+  docid_count:'(Array indexes only) Number of documents currently indexed. Differs from items_count when one document produces multiple array entries.'
+};
+
+function showIndexStats(fullKey,nIdx){
+  // Find the index data
+  let idx=null,nodeName='';
+  for(const node of globalStatsFlat){
+    const found=node.flat.find(x=>x.fullKey===fullKey);
+    if(found){idx=found;nodeName=node.nodeName;break}
+  }
+  if(!idx)return;
+
+  const modal=document.getElementById('index-stats-modal');
+  document.getElementById('index-stats-modal-title').textContent=idx.name;
+  document.getElementById('index-stats-modal-path').innerHTML=`<span class="badge badge-sm badge-ghost">${idx.bucket}</span> → <span class="badge badge-sm badge-ghost">${idx.scope}</span> → <span class="badge badge-sm badge-ghost">${idx.collection}</span> <span class="text-base-content/30 mx-1">|</span> Node: <span class="font-semibold">${nodeName}</span>${idx._replicaTotal>1?' <span class="badge badge-xs badge-info">Replica '+idx._replicaIndex+'/'+idx._replicaTotal+'</span>':''}`;
+
+  // Compute derived metrics
+  const rowsPerReq=idx.num_requests>0?(idx.num_rows_returned/idx.num_requests):0;
+  const bytesPerReq=idx.num_requests>0?(idx.scan_bytes_read/idx.num_requests):0;
+  const avgScanMs=(idx.avg_scan_latency||0)/1e6;
+  const totalBacklog=(idx.num_docs_pending||0)+(idx.num_docs_queued||0);
+  const cacheTotal=(idx.cache_hits||0)+(idx.cache_misses||0);
+  const itemsPerMB=idx.memory_used>0?(idx.items_count/(idx.memory_used/1048576)):0;
+
+  // Efficiency score
+  const cache=idx.cache_hit_percent||0,res=idx.resident_percent!=null?idx.resident_percent:100;
+  const latMs=avgScanMs;
+  const latScore=latMs<=0.1?100:latMs<=1?80:latMs<=10?50:latMs<=100?20:0;
+  const effScore=Math.round(cache*0.35+res*0.35+latScore*0.3);
+  const effGrade=effScore>=90?'A':effScore>=75?'B':effScore>=60?'C':effScore>=40?'D':'F';
+  const effColor=effScore>=90?'text-success':effScore>=75?'text-info':effScore>=60?'text-warning':'text-error';
+
+  function tip(key,label){return`<div class="tooltip tooltip-top cursor-help" data-tip="${STAT_TOOLTIPS[key]||key}"><span class="underline decoration-dotted decoration-base-content/30">${label||key}</span></div>`}
+
+  let h='';
+
+  // Row 1: Big stat cards
+  h+=`<div class="stats stats-horizontal shadow-sm w-full mb-4 flex-wrap">
+<div class="stat py-2 px-3"><div class="stat-title text-[10px]">${tip('','Efficiency Grade')}</div><div class="stat-value text-2xl ${effColor}">${effGrade}</div><div class="stat-desc text-[10px]">Score: ${effScore}/100</div></div>
+<div class="stat py-2 px-3"><div class="stat-title text-[10px]">${tip('disk_size','Disk Size')}</div><div class="stat-value text-lg">${fmt(idx.disk_size)}</div></div>
+<div class="stat py-2 px-3"><div class="stat-title text-[10px]">${tip('data_size','Data Size')}</div><div class="stat-value text-lg">${fmt(idx.data_size)}</div></div>
+<div class="stat py-2 px-3"><div class="stat-title text-[10px]">${tip('memory_used','Memory')}</div><div class="stat-value text-lg">${fmt(idx.memory_used)}</div></div>
+<div class="stat py-2 px-3"><div class="stat-title text-[10px]">${tip('items_count','Items')}</div><div class="stat-value text-lg">${fmtN(idx.items_count)}</div></div>
+<div class="stat py-2 px-3"><div class="stat-title text-[10px]">${tip('num_requests','Requests')}</div><div class="stat-value text-lg">${fmtN(idx.num_requests)}</div></div>
+</div>`;
+
+  // Row 2: Charts grid
+  h+=`<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">`;
+
+  // Chart 1: Storage breakdown (Disk vs Data vs Memory) — horizontal stacked bar
+  h+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><h4 class="font-bold text-xs mb-1">Storage Breakdown</h4><div id="idx-stats-storage" style="height:200px"></div></div></div>`;
+
+  // Chart 2: Gauge cluster — Frag%, Cache%, Resident%, Build Progress
+  h+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><h4 class="font-bold text-xs mb-1">Health Gauges</h4><div id="idx-stats-gauges" style="height:200px"></div></div></div>`;
+
+  // Chart 3: Scan Performance pie — Rows returned vs Scan errors vs Timeouts
+  h+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><h4 class="font-bold text-xs mb-1">Scan Outcomes</h4><div id="idx-stats-scan-pie" style="height:200px"></div></div></div>`;
+
+  // Chart 4: Cache Hits vs Misses
+  h+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><h4 class="font-bold text-xs mb-1">Cache Performance</h4><div id="idx-stats-cache" style="height:200px"></div></div></div>`;
+
+  h+=`</div>`;
+
+  // Row 3: All stats table with tooltips — grouped by category
+  const groups=[
+    {title:'Storage & Size',stats:[
+      {key:'disk_size',label:'Disk Size',val:fmt(idx.disk_size),badge:null},
+      {key:'data_size',label:'Data Size',val:fmt(idx.data_size),badge:null},
+      {key:'memory_used',label:'Memory Used',val:fmt(idx.memory_used),badge:null},
+      {key:'bloat_ratio',label:'Bloat Ratio',val:idx.bloat_ratio?idx.bloat_ratio.toFixed(2)+'x':'—',badge:bloatBadge(idx.bloat_ratio)},
+      {key:'frag_percent',label:'Fragmentation',val:idx.frag_percent+'%',badge:fragBadge(idx.frag_percent)},
+      {key:'items_count',label:'Items Count',val:fmtN(idx.items_count),badge:null},
+      {key:'avg_item_size',label:'Avg Item Size',val:fmt(idx.avg_item_size),badge:null},
+      {key:'recs_in_mem',label:'Records in Memory',val:fmtN(idx.recs_in_mem),badge:null},
+      {key:'recs_on_disk',label:'Records on Disk',val:fmtN(idx.recs_on_disk),badge:null},
+    ]},
+    {title:'Cache & Residency',stats:[
+      {key:'resident_percent',label:'Resident %',val:idx.resident_percent!=null?idx.resident_percent+'%':'—',badge:resBadge(idx.resident_percent)},
+      {key:'cache_hit_percent',label:'Cache Hit %',val:idx.cache_hit_percent+'%',badge:cacheBadge(idx.cache_hit_percent)},
+      {key:'cache_hits',label:'Cache Hits',val:fmtN(idx.cache_hits),badge:null},
+      {key:'cache_misses',label:'Cache Misses',val:fmtN(idx.cache_misses),badge:null},
+    ]},
+    {title:'Scan Performance',stats:[
+      {key:'avg_scan_latency',label:'Avg Scan Latency',val:fmtNs(idx.avg_scan_latency),badge:latencyBadge(idx.avg_scan_latency)},
+      {key:'total_scan_duration',label:'Total Scan Duration',val:fmtNs(idx.total_scan_duration),badge:null},
+      {key:'scan_bytes_read',label:'Scan Bytes Read',val:fmt(idx.scan_bytes_read),badge:null},
+      {key:'num_requests',label:'Total Requests',val:fmtN(idx.num_requests),badge:null},
+      {key:'num_rows_returned',label:'Rows Returned',val:fmtN(idx.num_rows_returned),badge:null},
+      {key:'num_scan_errors',label:'Scan Errors',val:fmtN(idx.num_scan_errors),badge:idx.num_scan_errors>0?pendingBadge(idx.num_scan_errors):null},
+      {key:'num_scan_timeouts',label:'Scan Timeouts',val:fmtN(idx.num_scan_timeouts),badge:idx.num_scan_timeouts>0?pendingBadge(idx.num_scan_timeouts):null},
+      {key:'num_pending_requests',label:'Pending Requests',val:fmtN(idx.num_pending_requests),badge:idx.num_pending_requests>0?pendingBadge(idx.num_pending_requests):null},
+    ]},
+    {title:'Derived Metrics',stats:[
+      {key:'',label:'Rows / Request',val:rowsPerReq.toFixed(1),badge:null,tip:'Average number of rows returned per scan request. High values may indicate broad scans or missing WHERE clauses.'},
+      {key:'',label:'Bytes / Request',val:fmt(Math.round(bytesPerReq)),badge:null,tip:'Average bytes of index data read per scan request. High values mean each query reads a lot of data.'},
+      {key:'',label:'Items / MB RAM',val:fmtN(Math.round(itemsPerMB)),badge:null,tip:'Number of indexed items per megabyte of RAM used. Lower values indicate less memory-efficient indexes (wide keys, arrays, overhead).'},
+    ]},
+    {title:'Indexing & Mutation',stats:[
+      {key:'num_docs_indexed',label:'Docs Indexed',val:fmtN(idx.num_docs_indexed),badge:null},
+      {key:'num_docs_pending',label:'Docs Pending',val:fmtN(idx.num_docs_pending),badge:pendingBadge(idx.num_docs_pending)},
+      {key:'num_docs_queued',label:'Docs Queued',val:fmtN(idx.num_docs_queued),badge:pendingBadge(idx.num_docs_queued)},
+      {key:'num_items_flushed',label:'Items Flushed',val:fmtN(idx.num_items_flushed),badge:null},
+      {key:'avg_drain_rate',label:'Avg Drain Rate',val:fmtN(idx.avg_drain_rate)+'/s',badge:null},
+      {key:'initial_build_progress',label:'Build Progress',val:idx.initial_build_progress+'%',badge:idx.initial_build_progress<100?`<span class="badge badge-warning badge-xs">${idx.initial_build_progress}%</span>`:null},
+    ]},
+    {title:'Timestamps & Activity',stats:[
+      {key:'last_known_scan_time',label:'Last Scan Time',val:fmtScanTime(idx.last_known_scan_time).replace(/<[^>]*>/g,''),badge:null},
+    ]},
+  ];
+
+  // Add array index stats if relevant
+  if(idx.avg_array_length>0||idx.docid_count>0){
+    groups.push({title:'Array Index',stats:[
+      {key:'avg_array_length',label:'Avg Array Length',val:fmtN(idx.avg_array_length),badge:null},
+      {key:'docid_count',label:'Document Count',val:fmtN(idx.docid_count),badge:null},
+    ]});
+  }
+
+  h+=`<div class="space-y-3">`;
+  groups.forEach(g=>{
+    h+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3">
+<h4 class="font-bold text-xs mb-2">${g.title}</h4>
+<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">`;
+    g.stats.forEach(s=>{
+      const tipText=s.tip||STAT_TOOLTIPS[s.key]||s.label;
+      h+=`<div class="tooltip tooltip-top cursor-help" data-tip="${tipText.replace(/"/g,'&quot;')}">
+<div class="bg-base-200 rounded-lg px-3 py-2">
+  <div class="text-[10px] text-base-content/50 underline decoration-dotted decoration-base-content/20 mb-0.5">${s.label}</div>
+  <div class="font-mono font-bold text-sm">${s.val}${s.badge?' '+s.badge:''}</div>
+</div></div>`;
+    });
+    h+=`</div></div></div>`;
+  });
+  h+=`</div>`;
+
+  document.getElementById('index-stats-modal-body').innerHTML=h;
+  modal.showModal();
+
+  // Render charts after DOM is ready
+  setTimeout(()=>{
+    // Dispose any previous modal charts
+    ['idx-stats-storage','idx-stats-gauges','idx-stats-scan-pie','idx-stats-cache'].forEach(id=>{
+      const el=document.getElementById(id);
+      if(el){const ex=echarts.getInstanceByDom(el);if(ex)ex.dispose()}
+    });
+
+    // 1. Storage breakdown bar
+    const storEl=document.getElementById('idx-stats-storage');
+    if(storEl){
+      const ch=echarts.init(storEl);
+      const overhead=Math.max(0,(idx.disk_size||0)-(idx.data_size||0));
+      ch.setOption({
+        tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:function(p){
+          let h='';p.forEach(x=>{h+=x.marker+' '+x.seriesName+': '+fmt(x.value)+'<br>'});return h;
+        }},
+        legend:{data:['Data','Disk Overhead','Memory'],bottom:0,textStyle:{fontSize:9}},
+        grid:{left:10,right:10,top:10,bottom:30,containLabel:true},
+        xAxis:{type:'value',axisLabel:{fontSize:9,formatter:fmt}},
+        yAxis:{type:'category',data:[''],axisLabel:{show:false}},
+        series:[
+          {name:'Data',type:'bar',stack:'storage',data:[idx.data_size||0],itemStyle:{color:'#22c55e'},barWidth:30},
+          {name:'Disk Overhead',type:'bar',stack:'storage',data:[overhead],itemStyle:{color:'#ef4444'},barWidth:30},
+          {name:'Memory',type:'bar',data:[idx.memory_used||0],itemStyle:{color:'#3b82f6'},barWidth:30}
+        ]
+      });
+    }
+
+    // 2. Health gauges (4 mini gauges)
+    const gaugeEl=document.getElementById('idx-stats-gauges');
+    if(gaugeEl){
+      const ch=echarts.init(gaugeEl);
+      const gaugeTemplate=(cx,cy,val,title,color)=>({
+        type:'gauge',center:[cx,cy],radius:'38%',startAngle:200,endAngle:-20,min:0,max:100,
+        progress:{show:true,width:10,itemStyle:{color}},
+        axisLine:{lineStyle:{width:10,color:[[1,'#e5e7eb']]}},
+        axisTick:{show:false},splitLine:{show:false},axisLabel:{show:false},pointer:{show:false},
+        title:{offsetCenter:[0,'55%'],fontSize:9,color:'#666'},
+        detail:{valueAnimation:true,offsetCenter:[0,'-5%'],fontSize:16,fontWeight:'bold',formatter:'{value}%',color:'#333'},
+        data:[{value:val,name:title}]
+      });
+      const fp=idx.frag_percent||0, cp=idx.cache_hit_percent||0;
+      const rp=idx.resident_percent!=null?idx.resident_percent:100;
+      const bp=idx.initial_build_progress!=null?idx.initial_build_progress:100;
+      ch.setOption({series:[
+        gaugeTemplate('15%','50%',100-fp,'Low Frag',fp>70?'#ef4444':fp>30?'#f59e0b':'#22c55e'),
+        gaugeTemplate('40%','50%',cp,'Cache Hit',cp<60?'#ef4444':cp<90?'#f59e0b':'#22c55e'),
+        gaugeTemplate('65%','50%',rp,'Resident',rp<40?'#ef4444':rp<80?'#f59e0b':'#22c55e'),
+        gaugeTemplate('90%','50%',bp,'Build',bp<100?'#f59e0b':'#22c55e')
+      ]});
+    }
+
+    // 3. Scan outcomes pie
+    const scanEl=document.getElementById('idx-stats-scan-pie');
+    if(scanEl){
+      const ch=echarts.init(scanEl);
+      const successReqs=Math.max(0,(idx.num_requests||0)-(idx.num_scan_errors||0)-(idx.num_scan_timeouts||0));
+      const data=[
+        {name:'Successful',value:successReqs,itemStyle:{color:'#22c55e'}},
+        {name:'Errors',value:idx.num_scan_errors||0,itemStyle:{color:'#ef4444'}},
+        {name:'Timeouts',value:idx.num_scan_timeouts||0,itemStyle:{color:'#f59e0b'}}
+      ].filter(d=>d.value>0);
+      if(data.length===0)data.push({name:'No Scans',value:1,itemStyle:{color:'#e5e7eb'}});
+      ch.setOption({
+        tooltip:{trigger:'item',formatter:'{b}: {c} ({d}%)'},
+        series:[{type:'pie',radius:['30%','65%'],center:['50%','50%'],
+          itemStyle:{borderRadius:3,borderColor:'#fff',borderWidth:2},
+          label:{show:true,formatter:'{b}\n{c}',fontSize:9},data}]
+      });
+    }
+
+    // 4. Cache hits vs misses
+    const cacheEl=document.getElementById('idx-stats-cache');
+    if(cacheEl){
+      const ch=echarts.init(cacheEl);
+      if(cacheTotal>0){
+        ch.setOption({
+          tooltip:{trigger:'item',formatter:'{b}: {c} ({d}%)'},
+          series:[{type:'pie',radius:['30%','65%'],center:['50%','50%'],
+            itemStyle:{borderRadius:3,borderColor:'#fff',borderWidth:2},
+            label:{show:true,formatter:function(p){return p.name+'\n'+fmtCompact(p.value)},fontSize:9},
+            data:[
+              {name:'Cache Hits',value:idx.cache_hits,itemStyle:{color:'#22c55e'}},
+              {name:'Cache Misses',value:idx.cache_misses,itemStyle:{color:'#ef4444'}}
+            ]}]
+        });
+      } else {
+        cacheEl.innerHTML='<div class="flex items-center justify-center h-full text-base-content/30 text-sm">No cache data</div>';
+      }
+    }
+  },50);
 }
 </script>
 </body>
