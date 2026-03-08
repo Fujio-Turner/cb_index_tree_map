@@ -48,8 +48,24 @@ CB Index Treemap turns raw Couchbase JSON into interactive treemaps, bar charts,
 - **Top 10 / Bottom 10 leaderboards** — largest disk, highest fragmentation, lowest cache hit, highest bloat, most requests, and more
 - **⚠️ Never-scanned indexes list** — indexes burning disk but never queried. Prime candidates for cleanup!
 
+### 💃 Index Placement Optimizer Tab *(Beta)*
+- **Plan A: Built-in Rebalance** — An automatic greedy algorithm analyzes your current index distribution and computes an optimized placement. Generates ready-to-run `ALTER INDEX ... WITH {"action": "move", ...}` statements.
+- **Plan B: AI-Assisted Rebalance** — Export your index topology (privacy-safe with obfuscated hashes + TOON token optimization), send it to any AI (ChatGPT, Claude, Gemini, etc.), and import the AI's proposed arrangement back. The tool de-hashes names, scores the plan, and generates ALTER INDEX statements.
+- **Lumpiness Score: Before → After** — Visual radial gauge comparison showing how much the rebalance improves distribution
+- **Proposed Moves table** with source → destination nodes, disk sizes, and reasoning
+- **AI Reasoning display** — The AI's explanation is auto-formatted with color-coded node badges, bold metrics, and de-obfuscated names
+- Requires Stats API data with at least 2 nodes
+
+### 🔍 Index Stats Detail Modal
+- Click the **Stats** button on any index row in the Stats API tab to open a comprehensive detail view
+- **Efficiency Grade** (A–F) with score breakdown
+- **4 interactive charts** — Storage Breakdown (stacked bar), Health Gauges (frag, cache, resident, build), Scan Outcomes (pie), Cache Performance (pie)
+- **Full stats table** grouped by category with tooltips on every metric
+
 ### 🔧 Global Filters
-- Filter everything by **Bucket**, **Scope**, **Collection**, or **Index Name** — all tabs update instantly
+- Filter everything by **Bucket**, **Scope**, **Collection**, **Index Name**, or **Node** — all tabs update instantly
+- **Multi-node selection** — Filter by one or more index nodes simultaneously
+- **Scan history filter** — Show All, Exclude Never Scanned, or Only Never Scanned indexes
 
 ### 💡 Tooltips Everywhere
 - Hover over any column header, stat card, filter dropdown, or button to see a plain-English explanation of what that metric means and why it matters

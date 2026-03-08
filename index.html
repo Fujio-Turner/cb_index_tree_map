@@ -23,12 +23,12 @@
 <!-- Navbar -->
 <div class="navbar bg-base-100 shadow-sm px-6">
   <div class="flex-1 gap-3">
-    <span class="text-xl font-bold text-error">🗺️ CB Index Treemap</span>
+    <span class="text-xl font-bold text-error">CB Index Treemap</span>
     <span class="text-xs text-base-content/50 hidden sm:inline">Visualize & analyze GSI index sizes, performance & capacity</span>
-    <span class="badge badge-ghost badge-sm text-[10px]">v1.3.0</span>
+    <span class="badge badge-ghost badge-sm text-[10px]">v2.0.0</span>
   </div>
   <div class="flex-none">
-    <button class="btn btn-ghost btn-sm gap-1" onclick="openFileManager()">💾 <span id="saved-count" class="badge badge-sm badge-ghost">0</span></button>
+    <button class="btn btn-ghost btn-sm gap-1" onclick="openFileManager()"><span id="saved-count" class="badge badge-sm badge-ghost">0</span></button>
   </div>
 </div>
 
@@ -45,6 +45,11 @@
     <select id="f-scope" class="select select-bordered select-xs w-40" onchange="applyFilters()" title="Filter by scope within a bucket"><option value="">All Scopes</option></select>
     <select id="f-collection" class="select select-bordered select-xs w-40" onchange="applyFilters()" title="Filter by collection within a scope"><option value="">All Collections</option></select>
     <select id="f-index" class="select select-bordered select-xs w-48" onchange="applyFilters()" title="Filter by index name"><option value="">All Indexes</option></select>
+    <select id="f-scan" class="select select-bordered select-xs w-52" onchange="applyFilters()" title="Filter indexes by scan history: All, Exclude Never Scanned, or Only Never Scanned">
+      <option value="">All</option>
+      <option value="exclude-never">Exclude Never Scanned</option>
+      <option value="only-never">Only Never Scanned</option>
+    </select>
     <div class="tooltip tooltip-bottom" data-tip="Show only unique indexes — filter out replica copies">
       <label class="flex items-center gap-1 cursor-pointer">
         <input type="checkbox" id="f-unique" class="checkbox checkbox-xs checkbox-primary" onchange="applyFilters()">
@@ -58,9 +63,10 @@
 
 <!-- Main Tabs -->
 <div role="tablist" class="tabs tabs-lifted bg-base-100 px-6">
-  <a role="tab" class="tab tab-active [--tab-bg:#fef2f2] [--tab-border-color:#ef4444] text-error font-semibold" onclick="switchMain('treemap',this)">📊 System Indexes</a>
-  <a role="tab" class="tab [--tab-bg:#eff6ff] [--tab-border-color:#3b82f6] text-blue-600 font-semibold" onclick="switchMain('stats',this)">📈 Stats API</a>
-  <a role="tab" class="tab [--tab-bg:#f0fdf4] [--tab-border-color:#22c55e] text-green-600 font-semibold" onclick="switchMain('analysis',this)">🔍 Analysis</a>
+  <a role="tab" class="tab tab-active [--tab-bg:#fef2f2] [--tab-border-color:#ef4444] text-error font-semibold" onclick="switchMain('treemap',this)">System Indexes</a>
+  <a role="tab" class="tab [--tab-bg:#eff6ff] [--tab-border-color:#3b82f6] text-blue-600 font-semibold" onclick="switchMain('stats',this)">Stats API</a>
+  <a role="tab" class="tab [--tab-bg:#f0fdf4] [--tab-border-color:#22c55e] text-green-600 font-semibold" onclick="switchMain('analysis',this)">Analysis</a>
+  <a role="tab" class="tab [--tab-bg:#fdf4ff] [--tab-border-color:#a855f7] text-purple-600 font-semibold" onclick="switchMain('moveit',this)">Index Placement Optimizer <span class="badge badge-info badge-xs text-white ml-1">Beta</span></a>
 </div>
 
 <!-- TAB 1: System Indexes -->
@@ -72,7 +78,7 @@
       <p id="system-json-hint" class="text-xs text-base-content/40">Index structure only (no sizes). Combine with Stats API for full analysis.</p>
       <div class="flex gap-2 items-center flex-wrap">
         <button class="btn btn-error btn-sm" onclick="loadSystemData()">Load & Render</button>
-        <button class="btn btn-sm btn-outline btn-success" onclick="saveSystemToServer()">💾 Save</button>
+        <button class="btn btn-sm btn-outline btn-success" onclick="saveSystemToServer()">Save</button>
         <span id="system-status" class="text-xs"></span>
       </div>
     </div>
@@ -109,7 +115,7 @@
       </div>
       <div class="flex gap-2 items-center flex-wrap mt-2">
         <button class="btn btn-error btn-sm" onclick="loadStatsData()">Load & Render</button>
-        <button class="btn btn-sm btn-outline btn-success" onclick="saveStatsToServer()">💾 Save All Nodes</button>
+        <button class="btn btn-sm btn-outline btn-success" onclick="saveStatsToServer()">Save All Nodes</button>
         <span id="stats-status" class="text-xs"></span>
         <div class="join ml-auto">
           <button class="btn btn-xs join-item btn-active" data-metric="disk_size" onclick="switchMetric(this)" title="Size charts by on-disk bytes (includes fragmentation and overhead)">Disk Size</button>
@@ -128,10 +134,28 @@
   </div>
 </div>
 
+<!-- TAB 4: Move it, Move It -->
+<div id="panel-moveit" class="tab-panel p-6 hidden">
+  <div id="moveit-content">
+    <div class="text-center py-12 text-base-content/40">Load data in <b>Stats API</b> tab first (at least 2 nodes required).</div>
+  </div>
+</div>
+
+<!-- Index Stats Detail Modal -->
+<dialog id="index-stats-modal" class="modal">
+  <div class="modal-box max-w-5xl max-h-[90vh]">
+    <form method="dialog"><button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">x</button></form>
+    <h3 id="index-stats-modal-title" class="font-bold text-lg mb-1"></h3>
+    <p id="index-stats-modal-path" class="text-xs text-base-content/50 mb-3"></p>
+    <div id="index-stats-modal-body" class="overflow-y-auto max-h-[75vh]"></div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
 <!-- Insight Detail Modal -->
 <dialog id="insight-modal" class="modal">
   <div class="modal-box max-w-3xl max-h-[85vh]">
-    <form method="dialog"><button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button></form>
+    <form method="dialog"><button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">x</button></form>
     <h3 id="insight-modal-title" class="font-bold text-lg mb-1"></h3>
     <p id="insight-modal-desc" class="text-xs text-base-content/50 mb-3"></p>
     <div id="insight-modal-body" class="overflow-y-auto max-h-[65vh]"></div>
@@ -142,13 +166,13 @@
 <!-- File Manager Modal -->
 <dialog id="file-modal" class="modal">
   <div class="modal-box max-w-lg">
-    <form method="dialog"><button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button></form>
-    <h3 class="font-bold text-lg mb-3">💾 Saved Files</h3>
+    <form method="dialog"><button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">x</button></form>
+    <h3 class="font-bold text-lg mb-3">Saved Files</h3>
     <p class="text-xs text-base-content/50 mb-3">Data persists across container restarts via Docker volume.</p>
     <div id="file-list" class="space-y-2 mb-4"></div>
     <div class="flex gap-2">
-      <button class="btn btn-error btn-sm" onclick="deleteAllFiles()">🗑️ Delete All</button>
-      <button class="btn btn-ghost btn-sm" onclick="refreshFileList()">🔄 Refresh</button>
+      <button class="btn btn-error btn-sm" onclick="deleteAllFiles()">Delete All</button>
+      <button class="btn btn-ghost btn-sm" onclick="refreshFileList()">Refresh</button>
     </div>
   </div>
   <form method="dialog" class="modal-backdrop"><button>close</button></form>
@@ -194,6 +218,7 @@ function switchMain(t,el){
   if(t==='treemap'&&globalSystemFlat.length)renderTreemapView();
   if(t==='stats'&&globalStatsFlat.length)renderStatsView();
   if(t==='analysis')renderAnalysis();
+  if(t==='moveit')renderMoveIt();
   setTimeout(()=>activeCharts.forEach(c=>c.resize()),100);
 }
 function switchMetric(el){
@@ -242,10 +267,11 @@ function rankClass(i){return i===0?'bg-warning/30':i===1?'bg-base-200':i===2?'bg
 
 // ===== FILTERS =====
 function getSelectedNodes(){const cbs=document.querySelectorAll('#f-node-list input[type=checkbox]:not(#f-node-all)');const checked=[...cbs].filter(c=>c.checked).map(c=>c.value);const all=document.getElementById('f-node-all');if(!cbs.length||!all||(all&&all.checked))return[];return checked}
-function getFilters(){return{nodes:getSelectedNodes(),bucket:document.getElementById('f-bucket').value,scope:document.getElementById('f-scope').value,collection:document.getElementById('f-collection').value,index:document.getElementById('f-index').value,uniqueOnly:document.getElementById('f-unique').checked}}
-function matchFilter(item,f){return(!f.bucket||item.bucket===f.bucket)&&(!f.scope||item.scope===f.scope)&&(!f.collection||item.collection===f.collection)&&(!f.index||item.name===f.index)}
+function getFilters(){return{nodes:getSelectedNodes(),bucket:document.getElementById('f-bucket').value,scope:document.getElementById('f-scope').value,collection:document.getElementById('f-collection').value,index:document.getElementById('f-index').value,scan:document.getElementById('f-scan').value,uniqueOnly:document.getElementById('f-unique').checked}}
+function matchFilter(item,f){const neverScanned=!item.last_known_scan_time||item.last_known_scan_time===0;if(f.scan==='exclude-never'&&neverScanned)return false;if(f.scan==='only-never'&&!neverScanned)return false;return(!f.bucket||item.bucket===f.bucket)&&(!f.scope||item.scope===f.scope)&&(!f.collection||item.collection===f.collection)&&(!f.index||item.name===f.index)}
 function dedup(arr){const seen=new Set();return arr.filter(x=>{const k=x.bucket+':'+x.scope+':'+x.collection+':'+x.name;if(seen.has(k))return false;seen.add(k);return true})}
 function matchNodeFilter(nodeName,f){return!f.nodes.length||f.nodes.includes(nodeName)}
+function getFilteredStats(){const f=getFilters();return globalStatsFlat.filter(n=>matchNodeFilter(n.nodeName,f)).map(n=>({...n,flat:n.flat.filter(x=>matchFilter(x,f))})).filter(n=>n.flat.length>0)}
 function populateFilters(){const all=[...globalSystemFlat,...globalStatsFlat.flatMap(n=>n.flat)];if(!all.length){document.getElementById('filter-bar').classList.add('hidden');return}document.getElementById('filter-bar').classList.remove('hidden');populateNodeFilter();cascadeFilters()}
 function populateNodeFilter(){
   const nodeNames=[...new Set(globalStatsFlat.map(n=>n.nodeName))].sort();
@@ -288,10 +314,10 @@ function cascadeFilters(){
   if(curC!==validC)fc.value=validC;
   if(curI!==validI)fi.value=validI;
 }
-function resetFilters(){['f-bucket','f-scope','f-collection','f-index'].forEach(id=>document.getElementById(id).value='');document.getElementById('f-unique').checked=false;const allCb=document.getElementById('f-node-all');if(allCb){allCb.checked=true;toggleAllNodes(allCb)}applyFilters()}
-function applyFilters(){cascadeFilters();renderTreemapView();renderStatsView();if(!document.getElementById('panel-analysis').classList.contains('hidden'))renderAnalysis();const f=getFilters();let a=[f.bucket,f.scope,f.collection,f.index].filter(Boolean).length;if(f.nodes.length)a++;if(f.uniqueOnly)a++;document.getElementById('filter-count').textContent=a?`(${a} active)`:''}
+function resetFilters(){['f-bucket','f-scope','f-collection','f-index','f-scan'].forEach(id=>document.getElementById(id).value='');document.getElementById('f-unique').checked=false;const allCb=document.getElementById('f-node-all');if(allCb){allCb.checked=true;toggleAllNodes(allCb)}applyFilters()}
+function applyFilters(){cascadeFilters();renderTreemapView();renderStatsView();if(!document.getElementById('panel-analysis').classList.contains('hidden'))renderAnalysis();if(!document.getElementById('panel-moveit').classList.contains('hidden'))renderMoveIt();const f=getFilters();let a=[f.bucket,f.scope,f.collection,f.index,f.scan].filter(Boolean).length;if(f.nodes.length)a++;if(f.uniqueOnly)a++;document.getElementById('filter-count').textContent=a?`(${a} active)`:''}
 
-function addStatsNode(){statsNodeCount++;const c=document.getElementById('stats-nodes'),d=document.createElement('div');d.className='stats-node-input mb-2';const bg=REPLICA_COLORS[(statsNodeCount-1)%REPLICA_COLORS.length];d.innerHTML=`<div class="flex items-center gap-2 mb-1"><span class="badge badge-sm text-white font-bold" style="background:${bg};border-color:${bg}">Node ${statsNodeCount}:</span><input type="text" class="input input-bordered input-xs w-48 node-name" value="Index Node ${statsNodeCount}"><button class="btn btn-ghost btn-xs text-base-content/50 node-toggle" onclick="toggleNodeTextarea(this)" title="Show/hide JSON">▼</button><button class="btn btn-ghost btn-xs text-error" onclick="this.closest('.stats-node-input').remove()">✕</button></div><textarea class="textarea textarea-bordered w-full h-24 font-mono text-xs node-stats-json" placeholder='Paste stats JSON...'></textarea>`;c.appendChild(d);updateNodeLabels()}
+function addStatsNode(){statsNodeCount++;const c=document.getElementById('stats-nodes'),d=document.createElement('div');d.className='stats-node-input mb-2';const bg=REPLICA_COLORS[(statsNodeCount-1)%REPLICA_COLORS.length];d.innerHTML=`<div class="flex items-center gap-2 mb-1"><span class="badge badge-sm text-white font-bold" style="background:${bg};border-color:${bg}">Node ${statsNodeCount}:</span><input type="text" class="input input-bordered input-xs w-48 node-name" value="Index Node ${statsNodeCount}"><button class="btn btn-ghost btn-xs text-base-content/50 node-toggle" onclick="toggleNodeTextarea(this)" title="Show/hide JSON">▼</button><button class="btn btn-ghost btn-xs text-error" onclick="this.closest('.stats-node-input').remove()">x</button></div><textarea class="textarea textarea-bordered w-full h-24 font-mono text-xs node-stats-json" placeholder='Paste stats JSON...'></textarea>`;c.appendChild(d);updateNodeLabels()}
 
 function updateNodeLabels(){const nodes=document.querySelectorAll('#stats-nodes .stats-node-input');const total=nodes.length;nodes.forEach((n,i)=>{const badge=n.querySelector('.badge');if(badge){const bg=REPLICA_COLORS[i%REPLICA_COLORS.length];badge.style.background=bg;badge.style.borderColor=bg;badge.textContent=`Node ${i+1} of ${total}:`}})}
 
@@ -304,9 +330,9 @@ function collapseAllNodes(){document.querySelectorAll('#stats-nodes .stats-node-
 function expandAllNodes(){document.querySelectorAll('#stats-nodes .stats-node-input').forEach(w=>{const ta=w.querySelector('.node-stats-json');const btn=w.querySelector('.node-toggle');if(ta.classList.contains('hidden')){ta.classList.remove('hidden');btn.textContent='▼'}})}
 
 // ===== PARSING =====
-function parseSystemJSON(js){let d;try{d=JSON.parse(js)}catch{try{d=JSON.parse('['+js+']')}catch{throw new Error('Invalid JSON')}}if(!Array.isArray(d)){if(d.results)d=d.results;else throw new Error('Expected array')}const flat=[];d.forEach(r=>{const idx=r.indexes||r;if(!idx.name)return;const isFTS=idx.using==='fts',bucket=idx.bucket_id||idx.keyspace_id||'unknown',scope=idx.scope_id||'_default',collection=idx.bucket_id?idx.keyspace_id:'_default',dn=isFTS?idx.name+' [FTS]':idx.name;flat.push({fullKey:`${bucket}:${scope}:${collection}:${dn}`,bucket,scope,collection,name:dn,value:1,type:idx.using||'gsi',state:idx.state||'unknown',replica:(idx.metadata&&idx.metadata.num_replica)||0,condition:idx.condition||'',keys:idx.index_key||[],keysStr:(idx.index_key||[]).join(', '),isPrimary:!!idx.is_primary})});return flat}
+function parseSystemJSON(js){let d;try{d=JSON.parse(js)}catch{try{d=JSON.parse('['+js+']')}catch{throw new Error('Invalid JSON')}}if(!Array.isArray(d)){if(d.results)d=d.results;else throw new Error('Expected array')}const flat=[];d.forEach(r=>{const idx=r.indexes||r;if(!idx.name)return;const isFTS=idx.using==='fts',bucket=idx.bucket_id||idx.keyspace_id||'unknown',scope=idx.scope_id||'_default',collection=idx.bucket_id?idx.keyspace_id:'_default',dn=isFTS?idx.name+' [FTS]':idx.name;flat.push({fullKey:`${bucket}:${scope}:${collection}:${dn}`,bucket,scope,collection,name:dn,value:1,type:idx.using||'gsi',state:idx.state||'unknown',replica:(idx.metadata&&idx.metadata.num_replica)||0,condition:idx.condition||'',keys:idx.index_key||[],keysStr:(idx.index_key||[]).join(', '),isPrimary:!!idx.is_primary,last_known_scan_time:(idx.metadata&&idx.metadata.stats&&idx.metadata.stats.last_known_scan_time)||0})});return flat}
 
-function parseStatsNodeJSON(js,metric){let d;try{d=JSON.parse(js)}catch{throw new Error('Invalid JSON')}let indexer=null;const flat=[];for(const[key,s]of Object.entries(d)){if(key==='indexer'){indexer=s;continue}const p=key.split(':');let bucket,scope,collection,name;if(p.length===2){bucket=p[0];scope='_default';collection='_default';name=p[1]}else if(p.length===4){bucket=p[0];scope=p[1];collection=p[2];name=p[3]}else{bucket=p[0];scope=p.length>2?p[1]:'_default';collection=p.length>3?p[2]:'_default';name=p[p.length-1]}const ds=s.disk_size||0,da=s.data_size||0;flat.push({fullKey:key,bucket,scope,collection,name,value:s[metric]||ds||da||0,disk_size:ds,data_size:da,bloat_ratio:da>0?ds/da:0,items_count:s.items_count||0,frag_percent:s.frag_percent||0,resident_percent:s.resident_percent!=null?s.resident_percent:null,memory_used:s.memory_used||0,avg_item_size:s.avg_item_size||0,recs_in_mem:s.recs_in_mem||0,recs_on_disk:s.recs_on_disk||0,cache_hit_percent:s.cache_hit_percent||0,num_docs_pending:s.num_docs_pending||0,num_docs_queued:s.num_docs_queued||0,num_requests:s.num_requests||0,num_rows_returned:s.num_rows_returned||0,num_docs_indexed:s.num_docs_indexed||0,avg_scan_latency:s.avg_scan_latency||0,last_known_scan_time:s.last_known_scan_time||0,total_scan_duration:s.total_scan_duration||0,scan_bytes_read:s.scan_bytes_read||0})}return{indexer,flat}}
+function parseStatsNodeJSON(js,metric){let d;try{d=JSON.parse(js)}catch{throw new Error('Invalid JSON')}let indexer=null;const flat=[];for(const[key,s]of Object.entries(d)){if(key==='indexer'){indexer=s;continue}const p=key.split(':');let bucket,scope,collection,name;if(p.length===2){bucket=p[0];scope='_default';collection='_default';name=p[1]}else if(p.length===4){bucket=p[0];scope=p[1];collection=p[2];name=p[3]}else{bucket=p[0];scope=p.length>2?p[1]:'_default';collection=p.length>3?p[2]:'_default';name=p[p.length-1]}const ds=s.disk_size||0,da=s.data_size||0;flat.push({fullKey:key,bucket,scope,collection,name,value:s[metric]||ds||da||0,disk_size:ds,data_size:da,bloat_ratio:da>0?ds/da:0,items_count:s.items_count||0,frag_percent:s.frag_percent||0,resident_percent:s.resident_percent!=null?s.resident_percent:null,memory_used:s.memory_used||0,avg_item_size:s.avg_item_size||0,recs_in_mem:s.recs_in_mem||0,recs_on_disk:s.recs_on_disk||0,cache_hit_percent:s.cache_hit_percent||0,cache_hits:s.cache_hits||0,cache_misses:s.cache_misses||0,num_docs_pending:s.num_docs_pending||0,num_docs_queued:s.num_docs_queued||0,num_requests:s.num_requests||0,num_rows_returned:s.num_rows_returned||0,num_docs_indexed:s.num_docs_indexed||0,num_items_flushed:s.num_items_flushed||0,num_pending_requests:s.num_pending_requests||0,num_scan_errors:s.num_scan_errors||0,num_scan_timeouts:s.num_scan_timeouts||0,avg_scan_latency:s.avg_scan_latency||0,avg_drain_rate:s.avg_drain_rate||0,last_known_scan_time:s.last_known_scan_time||0,total_scan_duration:s.total_scan_duration||0,scan_bytes_read:s.scan_bytes_read||0,initial_build_progress:s.initial_build_progress!=null?s.initial_build_progress:100,avg_array_length:s.avg_array_length||0,docid_count:s.docid_count||0})}return{indexer,flat}}
 
 // ===== REPLICA MAP =====
 const REPLICA_COLORS=['#3b82f6','#22c55e','#f59e0b','#ef4444','#8b5cf6','#ec4899','#14b8a6','#f97316','#06b6d4','#84cc16'];
@@ -396,6 +422,7 @@ let h=`<div class="stats-table-wrap"><table class="table table-xs table-pin-rows
 <th data-col="num_docs_pending" class="cursor-pointer hover:bg-base-300" title="Documents waiting to be indexed. Non-zero means the index is behind on mutations">Pending</th>
 <th data-col="num_requests" class="cursor-pointer hover:bg-base-300" title="Total number of scan requests this index has served">Reqs</th>
 <th data-col="last_known_scan_time" class="cursor-pointer hover:bg-base-300" title="Timestamp of the last scan against this index. 'never' means the index has never been queried">Last Scan</th>
+<th title="View detailed stats overview for this index">Details</th>
 </tr></thead><tbody>`;
 fl.forEach(f=>{const bw=Math.max(2,Math.round((f.disk_size||0)/mx*50));const fp=`${f.bucket}:${f.scope}:${f.collection}:${f.name}`;
 h+=`<tr data-key="${fp}" class="hover:bg-warning/10 cursor-pointer" onclick="onRowClick(this,'${nIdx}')">
@@ -413,12 +440,13 @@ h+=`<tr data-key="${fp}" class="hover:bg-warning/10 cursor-pointer" onclick="onR
 <td class="font-mono text-xs text-right" data-sort="${f.avg_scan_latency||0}">${fmtNs(f.avg_scan_latency)}</td>
 <td class="font-mono text-xs text-right" data-sort="${f.num_docs_pending||0}">${fmtN(f.num_docs_pending||0)}</td>
 <td class="font-mono text-xs text-right" data-sort="${f.num_requests||0}">${fmtN(f.num_requests)}</td>
-<td class="font-mono text-xs text-right" data-sort="${f.last_known_scan_time||0}">${fmtScanTime(f.last_known_scan_time)}</td></tr>`});
+<td class="font-mono text-xs text-right" data-sort="${f.last_known_scan_time||0}">${fmtScanTime(f.last_known_scan_time)}</td>
+<td><button class="btn btn-xs btn-outline btn-info" onclick="event.stopPropagation();showIndexStats(${JSON.stringify(f.fullKey).replace(/"/g,'&quot;')},'${nIdx}')">Stats</button></td></tr>`});
 h+=`<tr class="font-bold bg-base-200 border-t-2 border-base-300"><td>TOTAL (${fl.length})</td><td></td><td></td><td></td><td></td>
 <td class="font-mono text-xs text-right">${fmt(tD)}</td><td class="font-mono text-xs text-right">${fmt(tDa)}</td>
 <td class="font-mono text-xs text-right">${tDa>0?(tD/tDa).toFixed(1)+'x':''}</td><td></td>
 <td class="font-mono text-xs text-right">${fmtN(tI)}</td><td></td><td class="font-mono text-xs text-right">${fmt(tM)}</td>
-<td></td><td></td><td></td><td></td><td></td></tr>`;
+<td></td><td></td><td></td><td></td><td></td><td></td></tr>`;
 return h+'</tbody></table></div>'}
 
 // Column sorting
@@ -455,7 +483,7 @@ function findDuplicateKeys(keys){if(!keys)return[];const fields=getIndexFields(k
 
 function makeSystemTable(filtered){
   if(!filtered.length)return'';
-  let h=`<div class="card bg-base-100 shadow-sm mt-4"><div class="card-body p-3"><div class="flex justify-between items-center mb-2"><h3 class="font-bold text-sm">📋 Index Definitions Table</h3><div class="badge badge-ghost">${filtered.length} indexes</div></div><div class="stats-table-wrap"><table class="table table-xs table-pin-rows stats-table" id="tbl-sys"><thead><tr class="bg-base-200">
+  let h=`<div class="card bg-base-100 shadow-sm mt-4"><div class="card-body p-3"><div class="flex justify-between items-center mb-2"><h3 class="font-bold text-sm">Index Definitions Table</h3><div class="badge badge-ghost">${filtered.length} indexes</div></div><div class="stats-table-wrap"><table class="table table-xs table-pin-rows stats-table" id="tbl-sys"><thead><tr class="bg-base-200">
 <th data-col="name" class="cursor-pointer hover:bg-base-300" title="Index name">Index<span class="sa ml-1 text-[9px] text-base-content/30">▼</span></th>
 <th data-col="bucket" class="cursor-pointer hover:bg-base-300" title="Bucket">Bucket</th>
 <th data-col="scope" class="cursor-pointer hover:bg-base-300" title="Scope">Scope</th>
@@ -466,7 +494,7 @@ function makeSystemTable(filtered){
 <th data-col="dupeKeys" class="cursor-pointer hover:bg-base-300" title="Fields that appear more than once in the index keys">Dupe Keys</th>
 <th data-col="replica" class="cursor-pointer hover:bg-base-300" title="Number of replicas. Hover badges to see node placements">Replicas</th>
 <th data-col="createStmt" class="cursor-pointer hover:bg-base-300" title="CREATE INDEX statement">CREATE INDEX</th>
-<th title="Copy index definition to clipboard">📋</th>
+<th title="Copy index definition to clipboard"></th>
 </tr></thead><tbody>`;
   filtered.forEach(f=>{
     const isArr=isArrayIndex(f.keys);
@@ -496,7 +524,7 @@ function makeSystemTable(filtered){
 function renderTreemapView(){const c=document.getElementById('treemap-content');c.innerHTML='';activeCharts=activeCharts.filter(ch=>{try{ch.dispose()}catch{}return false});chartIndexMaps=[];if(!globalSystemFlat.length){c.innerHTML='<div class="text-center py-12 text-base-content/40">No data loaded</div>';return}const f=getFilters();let filtered=globalSystemFlat.filter(i=>matchFilter(i,f));if(f.uniqueOnly)filtered=dedup(filtered);if(!filtered.length){c.innerHTML='<div class="alert alert-warning"><span>No indexes match current filters</span></div>';return}
 // Build chart HTML: 4 charts in a 2x2 grid, then the table
 c.innerHTML=`<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><h3 class="font-bold text-sm mb-2">🏷️ Most Commonly Indexed Fields</h3><div id="wc-box-sys" class="abox"></div></div></div>
+<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center justify-between mb-2"><h3 class="font-bold text-sm">Most Commonly Indexed Fields</h3><div class="join"><button class="btn btn-xs join-item btn-active" id="wc-cloud-btn" onclick="switchWcMode('cloud')">Word Cloud</button><button class="btn btn-xs join-item" id="wc-pie-btn" onclick="switchWcMode('pie')">Pie</button></div></div><div id="wc-box-sys" class="abox"></div></div></div>
 <div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div id="bar-last-scan" class="abox"></div></div></div>
 <div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div id="pie-where" class="abox"></div></div></div>
 <div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center justify-between mb-1"><h3 class="font-bold text-sm">Index Count by Bucket</h3><div class="join"><button class="btn btn-xs join-item" id="idx-count-pie-btn" onclick="switchIdxCountMode('pie')">Pie</button><button class="btn btn-xs join-item btn-active" id="idx-count-bar-btn" onclick="switchIdxCountMode('bar')">Bar</button></div></div><div id="bar-bucket-scope-stacked" class="chart-box"></div></div></div>
@@ -504,8 +532,10 @@ c.innerHTML=`<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
 setTimeout(()=>{renderSystemCharts(filtered)},50)}
 
 function renderSystemCharts(filtered){
-  // 1. Word cloud: most commonly indexed fields
-  renderWordCloud(filtered,'wc-box-sys');
+  // 1. Word cloud / pie: most commonly indexed fields
+  wcFilteredCache=filtered;
+  if(wcMode==='pie')renderFieldPie(filtered,'wc-box-sys');
+  else renderWordCloud(filtered,'wc-box-sys');
 
   // 2. Bar: days since last scan — filtered by global filters, bucketed into ranges
   const f=getFilters();
@@ -563,16 +593,17 @@ function switchIdxCountMode(mode){
   renderIdxCountChart(mode);
 }
 
-function calcLumpinessScore(){
-  const nodeCount=globalStatsFlat.length;
+function calcLumpinessScore(statsData){
+  const src=statsData||globalStatsFlat;
+  const nodeCount=src.length;
   if(nodeCount<2)return null;
   // 1. Index count balance: how evenly indexes are spread across nodes
-  const idxCounts=globalStatsFlat.map(n=>n.flat.length);
+  const idxCounts=src.map(n=>n.flat.length);
   const totalIdx=idxCounts.reduce((s,c)=>s+c,0);
   const idealCount=totalIdx/nodeCount;
   const countImbalance=idealCount>0?idxCounts.reduce((s,c)=>s+Math.abs(c-idealCount),0)/(totalIdx):0;
   // 2. Disk size balance: how evenly total disk is spread across nodes
-  const diskPerNode=globalStatsFlat.map(n=>n.flat.reduce((s,x)=>s+(x.disk_size||0),0));
+  const diskPerNode=src.map(n=>n.flat.reduce((s,x)=>s+(x.disk_size||0),0));
   const totalDisk=diskPerNode.reduce((s,d)=>s+d,0);
   const idealDisk=totalDisk/nodeCount;
   const diskImbalance=idealDisk>0?diskPerNode.reduce((s,d)=>s+Math.abs(d-idealDisk),0)/(totalDisk):0;
@@ -585,18 +616,18 @@ function calcLumpinessScore(){
     replicaImbalance=colocated/replicaKeys.length;
   }
   // 4. Memory balance
-  const memPerNode=globalStatsFlat.map(n=>n.flat.reduce((s,x)=>s+(x.memory_used||0),0));
+  const memPerNode=src.map(n=>n.flat.reduce((s,x)=>s+(x.memory_used||0),0));
   const totalMem=memPerNode.reduce((s,m)=>s+m,0);
   const idealMem=totalMem/nodeCount;
   const memImbalance=idealMem>0?memPerNode.reduce((s,m)=>s+Math.abs(m-idealMem),0)/(totalMem):0;
   // Weighted score: 30% count balance + 30% disk balance + 20% memory balance + 20% replica spread
   const rawImbalance=countImbalance*0.30+diskImbalance*0.30+memImbalance*0.20+replicaImbalance*0.20;
   const score=Math.max(0,Math.min(100,Math.round((1-rawImbalance)*100)));
-  return{score,countImbalance:Math.round(countImbalance*100),diskImbalance:Math.round(diskImbalance*100),memImbalance:Math.round(memImbalance*100),replicaImbalance:Math.round(replicaImbalance*100),idxCounts,diskPerNode,memPerNode,nodeNames:globalStatsFlat.map(n=>n.nodeName)};
+  return{score,countImbalance:Math.round(countImbalance*100),diskImbalance:Math.round(diskImbalance*100),memImbalance:Math.round(memImbalance*100),replicaImbalance:Math.round(replicaImbalance*100),idxCounts,diskPerNode,memPerNode,nodeNames:src.map(n=>n.nodeName)};
 }
 
 function renderLumpinessCard(){
-  const lump=calcLumpinessScore();
+  const lump=calcLumpinessScore(getFilteredStats());
   if(!lump)return'';
   const sc=lump.score;
   const color=sc>=90?'text-success':sc>=75?'text-info':sc>=60?'text-warning':'text-error';
@@ -617,7 +648,7 @@ function renderLumpinessCard(){
     </div>
   </div>
   <div class="flex-1 min-w-[200px]">
-    <div class="flex items-center gap-2 mb-1"><div class="tooltip tooltip-bottom" data-tip="Measures how unevenly (lumpy) your GSI indexes are distributed across index nodes. A perfectly balanced cluster scores 100. Uneven distribution can cause hot spots, uneven memory pressure, and inconsistent query latency across nodes."><h3 class="font-bold text-sm cursor-help underline decoration-dotted">📐 Lumpiness Score</h3></div><span class="text-xs text-base-content/50">How evenly indexes are distributed across ${lump.nodeNames.length} nodes</span></div>
+    <div class="flex items-center gap-2 mb-1"><div class="tooltip tooltip-bottom" data-tip="Measures how unevenly (lumpy) your GSI indexes are distributed across index nodes. A perfectly balanced cluster scores 100. Uneven distribution can cause hot spots, uneven memory pressure, and inconsistent query latency across nodes."><h3 class="font-bold text-sm cursor-help underline decoration-dotted">Lumpiness Score</h3></div><span class="text-xs text-base-content/50">How evenly indexes are distributed across ${lump.nodeNames.length} nodes</span></div>
     <p class="text-[10px] text-base-content/50 mb-2">Weighted: 30% index count balance + 30% disk size balance + 20% memory balance + 20% replica spread. 100 = perfectly even.</p>
     <div class="grid grid-cols-4 gap-2 text-xs mb-2">
       <div class="tooltip tooltip-bottom" data-tip="How evenly the number of indexes is distributed across nodes. 0% = perfectly even, 100% = all indexes on one node."><div class="bg-base-100 rounded px-2 py-1 text-center cursor-help"><div class="text-[9px] text-base-content/50 underline decoration-dotted">Count Imbalance</div><div class="font-mono font-bold">${lump.countImbalance}%</div></div></div>
@@ -633,14 +664,14 @@ function renderLumpinessCard(){
 
 function renderStatsView(){const c=document.getElementById('stats-content');c.innerHTML='';activeCharts=activeCharts.filter(ch=>{try{ch.dispose()}catch{}return false});chartIndexMaps=[];treemapTransforms={};if(!globalStatsFlat.length){c.innerHTML='<div class="text-center py-12 text-base-content/40">No data loaded</div>';return}const f=getFilters();
 // Lumpiness Score card (only when multiple nodes)
-if(globalStatsFlat.length>1){const lumpCard=document.createElement('div');lumpCard.innerHTML=renderLumpinessCard();while(lumpCard.firstChild)c.appendChild(lumpCard.firstChild)}
+if(getFilteredStats().length>1){const lumpCard=document.createElement('div');lumpCard.innerHTML=renderLumpinessCard();while(lumpCard.firstChild)c.appendChild(lumpCard.firstChild)}
 globalStatsFlat.forEach((node,i)=>{if(!matchNodeFilter(node.nodeName,f))return;let filtered=node.flat.filter(x=>matchFilter(x,f)).map(x=>({...x,value:x[currentMetric]||x.disk_size||x.data_size||0}));if(f.uniqueOnly)filtered=dedup(filtered);if(!filtered.length)return;const totalDisk=filtered.reduce((s,x)=>s+(x.disk_size||0),0);const sec=document.createElement('div');sec.className='card bg-base-100 shadow-sm mb-4';
 sec.innerHTML=`<div class="card-body p-3">
 <div class="flex justify-between items-center mb-2"><h3 class="font-bold text-sm"><span class="badge text-white font-bold" style="background:${REPLICA_COLORS[i%REPLICA_COLORS.length]};border-color:${REPLICA_COLORS[i%REPLICA_COLORS.length]}">Node ${i+1} of ${globalStatsFlat.length}</span> ${node.nodeName}</h3><div class="flex gap-2">${node.indexer?`<div class="badge badge-${node.indexer.indexer_state==='Active'?'success':'warning'} badge-sm">${node.indexer.indexer_state}</div>`:''}<div class="badge badge-ghost badge-sm">${filtered.length} indexes · ${fmt(totalDisk)}</div></div></div>
 ${node.indexer?`<div class="stats stats-horizontal shadow-sm mb-3 w-full"><div class="stat py-2 px-4" title="Total RAM consumed by all indexes on this node"><div class="stat-title text-[10px]">Memory Used</div><div class="stat-value text-base">${fmt(node.indexer.memory_used||0)}</div><div class="stat-desc text-[10px]">of ${fmt(node.indexer.memory_quota||0)} quota</div></div><div class="stat py-2 px-4" title="Percentage of the node's index memory quota currently in use. High values mean you're running out of room"><div class="stat-title text-[10px]">Memory Quota Used</div><div class="stat-value text-base ${(node.indexer.memory_used||0)/(node.indexer.memory_quota||1)>.9?'text-error':(node.indexer.memory_used||0)/(node.indexer.memory_quota||1)>.7?'text-warning':'text-success'}">${((node.indexer.memory_used||0)/(node.indexer.memory_quota||1)*100).toFixed(1)}%</div></div><div class="stat py-2 px-4" title="Total storage allocated by the indexer on this node (includes internal buffers and caches)"><div class="stat-title text-[10px]">Storage Allocated</div><div class="stat-value text-base">${fmt(node.indexer.memory_total_storage||0)}</div></div><div class="stat py-2 px-4" title="Combined on-disk size of all indexes on this node"><div class="stat-title text-[10px]">Total Disk</div><div class="stat-value text-base">${fmt(totalDisk)}</div></div></div>`:''}
 <div class="flex items-center gap-1 mb-1 flex-wrap">
-<div class="join"><button class="btn btn-ghost btn-xs join-item" onclick="treemapReset(${i})" title="Reset zoom & pan to default">🏠</button><button class="btn btn-ghost btn-xs join-item" onclick="treemapZoom(${i},'in')" title="Zoom in">➕</button><button class="btn btn-ghost btn-xs join-item" onclick="treemapZoom(${i},'out')" title="Zoom out">➖</button></div>
-<div class="join ml-1"><button class="btn btn-ghost btn-xs join-item" onclick="treemapPan(${i},0,-1)" title="Pan up">⬆️</button><button class="btn btn-ghost btn-xs join-item" onclick="treemapPan(${i},-1,0)" title="Pan left">⬅️</button><button class="btn btn-ghost btn-xs join-item" onclick="treemapPan(${i},1,0)" title="Pan right">➡️</button><button class="btn btn-ghost btn-xs join-item" onclick="treemapPan(${i},0,1)" title="Pan down">⬇️</button></div>
+<div class="join"><button class="btn btn-ghost btn-xs join-item" onclick="treemapReset(${i})" title="Reset zoom & pan to default">Reset</button><button class="btn btn-ghost btn-xs join-item" onclick="treemapZoom(${i},'in')" title="Zoom in">+</button><button class="btn btn-ghost btn-xs join-item" onclick="treemapZoom(${i},'out')" title="Zoom out">-</button></div>
+<div class="join ml-1"><button class="btn btn-ghost btn-xs join-item" onclick="treemapPan(${i},0,-1)" title="Pan up">▲</button><button class="btn btn-ghost btn-xs join-item" onclick="treemapPan(${i},-1,0)" title="Pan left">◀</button><button class="btn btn-ghost btn-xs join-item" onclick="treemapPan(${i},1,0)" title="Pan right">▶</button><button class="btn btn-ghost btn-xs join-item" onclick="treemapPan(${i},0,1)" title="Pan down">▼</button></div>
 <span id="tm-zoom-label-${i}" class="badge badge-ghost badge-xs font-mono ml-1">100%</span>
 <span class="text-[10px] text-base-content/40 ml-1">Click highlights table row · Use buttons to zoom & pan</span>
 </div>
@@ -671,7 +702,7 @@ if(statsF.length){
   const resArr=statsF.filter(x=>x.resident_percent!=null);const avgRes=resArr.length?(resArr.reduce((s,x)=>s+x.resident_percent,0)/resArr.length):0;
   const neverScanned=statsF.filter(x=>!x.last_known_scan_time||x.last_known_scan_time===0).length;
 
-  html+=`<div class="card bg-base-100 shadow-sm md:col-span-2"><div class="card-body p-3"><h3 class="font-bold text-sm mb-3">📊 Summary</h3>
+  html+=`<div class="card bg-base-100 shadow-sm md:col-span-2"><div class="card-body p-3"><h3 class="font-bold text-sm mb-3">Summary</h3>
 <div class="stats stats-horizontal shadow-sm w-full flex-wrap">
 <div class="stat py-2 px-3" title="Total number of GSI indexes across all nodes"><div class="stat-title text-[10px]">Total Indexes</div><div class="stat-value text-lg">${statsF.length}</div></div>
 <div class="stat py-2 px-3" title="Combined on-disk size of all indexes (includes fragmentation and overhead)"><div class="stat-title text-[10px]">Total Disk</div><div class="stat-value text-lg">${fmt(tDisk)}</div></div>
@@ -682,12 +713,12 @@ if(statsF.length){
 <div class="stat py-2 px-3" title="Average percentage of index data kept in memory. Low residency means more disk I/O during scans"><div class="stat-title text-[10px]">Avg Resident</div><div class="stat-value text-lg">${avgRes.toFixed(0)}%</div></div>
 <div class="stat py-2 px-3" title="Number of indexes that have never been queried. These consume disk and memory but provide no value — consider dropping them"><div class="stat-title text-[10px]">Never Scanned</div><div class="stat-value text-lg ${neverScanned>0?'text-warning':''}">${neverScanned}</div><div class="stat-desc text-[10px]">of ${statsF.length}</div></div>
 </div>
-${(()=>{const lump=calcLumpinessScore();if(!lump)return'';const sc=lump.score;const color=sc>=90?'text-success':sc>=75?'text-info':sc>=60?'text-warning':'text-error';return`<div class="flex items-center gap-3 mt-3 pt-3 border-t border-base-200"><div class="tooltip tooltip-right" data-tip="Measures how unevenly (lumpy) your GSI indexes are distributed across index nodes. 100 = perfectly balanced. Uneven distribution can cause hot spots, uneven memory pressure, and inconsistent query latency. Weighted: 30% index count + 30% disk size + 20% memory + 20% replica spread."><div class="flex items-center gap-2 cursor-help"><span class="text-sm font-bold underline decoration-dotted">📐 Lumpiness Score</span><span class="font-mono font-bold text-lg ${color}">${sc}</span><span class="badge badge-sm ${sc>=90?'badge-success':sc>=75?'badge-info':sc>=60?'badge-warning':'badge-error'}">${sc>=90?'Excellent':sc>=75?'Good':sc>=60?'Fair':sc>=40?'Poor':'Critical'}</span></div></div><div class="flex gap-2 text-[10px] text-base-content/50 ml-2"><div class="tooltip tooltip-bottom" data-tip="How evenly the number of indexes is distributed across nodes. 0% = perfectly even."><span class="cursor-help underline decoration-dotted">Count: ${lump.countImbalance}%</span></div><span>·</span><div class="tooltip tooltip-bottom" data-tip="How evenly total on-disk size is spread across nodes. 0% = perfectly even."><span class="cursor-help underline decoration-dotted">Disk: ${lump.diskImbalance}%</span></div><span>·</span><div class="tooltip tooltip-bottom" data-tip="How evenly RAM usage is spread across nodes. 0% = perfectly even."><span class="cursor-help underline decoration-dotted">Mem: ${lump.memImbalance}%</span></div><span>·</span><div class="tooltip tooltip-bottom" data-tip="Percentage of replicated indexes with copies on the same node instead of spread out. 0% = all replicas on separate nodes."><span class="cursor-help underline decoration-dotted">Replica: ${lump.replicaImbalance}%</span></div></div><span class="text-[10px] text-base-content/40 ml-auto">${lump.nodeNames.length} nodes</span></div>`})()}
+${(()=>{const lump=calcLumpinessScore(getFilteredStats());if(!lump)return'';const sc=lump.score;const color=sc>=90?'text-success':sc>=75?'text-info':sc>=60?'text-warning':'text-error';return`<div class="flex items-center gap-3 mt-3 pt-3 border-t border-base-200"><div class="tooltip tooltip-right" data-tip="Measures how unevenly (lumpy) your GSI indexes are distributed across index nodes. 100 = perfectly balanced. Uneven distribution can cause hot spots, uneven memory pressure, and inconsistent query latency. Weighted: 30% index count + 30% disk size + 20% memory + 20% replica spread."><div class="flex items-center gap-2 cursor-help"><span class="text-sm font-bold underline decoration-dotted">Lumpiness Score</span><span class="font-mono font-bold text-lg ${color}">${sc}</span><span class="badge badge-sm ${sc>=90?'badge-success':sc>=75?'badge-info':sc>=60?'badge-warning':'badge-error'}">${sc>=90?'Excellent':sc>=75?'Good':sc>=60?'Fair':sc>=40?'Poor':'Critical'}</span></div></div><div class="flex gap-2 text-[10px] text-base-content/50 ml-2"><div class="tooltip tooltip-bottom" data-tip="How evenly the number of indexes is distributed across nodes. 0% = perfectly even."><span class="cursor-help underline decoration-dotted">Count: ${lump.countImbalance}%</span></div><span>·</span><div class="tooltip tooltip-bottom" data-tip="How evenly total on-disk size is spread across nodes. 0% = perfectly even."><span class="cursor-help underline decoration-dotted">Disk: ${lump.diskImbalance}%</span></div><span>·</span><div class="tooltip tooltip-bottom" data-tip="How evenly RAM usage is spread across nodes. 0% = perfectly even."><span class="cursor-help underline decoration-dotted">Mem: ${lump.memImbalance}%</span></div><span>·</span><div class="tooltip tooltip-bottom" data-tip="Percentage of replicated indexes with copies on the same node instead of spread out. 0% = all replicas on separate nodes."><span class="cursor-help underline decoration-dotted">Replica: ${lump.replicaImbalance}%</span></div></div><span class="text-[10px] text-base-content/40 ml-auto">${lump.nodeNames.length} nodes</span></div>`})()}
 </div></div>`;
 }
 
 // Index Item Count Distribution (half width) + Performance Insights (half width)
-if(statsF.length)html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center justify-between mb-2"><h3 class="font-bold text-sm">📦 Index Item Count Distribution</h3><div class="join"><button class="btn btn-xs join-item btn-active" id="item-dist-bar-btn" onclick="switchItemDistMode('bar')">Bar</button><button class="btn btn-xs join-item" id="item-dist-pie-btn" onclick="switchItemDistMode('pie')">Pie</button></div></div><div id="bar-item-dist" class="abox"></div></div></div>`;
+if(statsF.length)html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center justify-between mb-2"><h3 class="font-bold text-sm">Index Item Count Distribution</h3><div class="join"><button class="btn btn-xs join-item btn-active" id="item-dist-bar-btn" onclick="switchItemDistMode('bar')">Bar</button><button class="btn btn-xs join-item" id="item-dist-pie-btn" onclick="switchItemDistMode('pie')">Pie</button></div></div><div id="bar-item-dist" class="abox"></div></div></div>`;
 else if(sysF.length)html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3 flex items-center justify-center text-base-content/40 text-sm">Load <b class="mx-1">Stats API</b> data to see Item Count Distribution</div></div>`;
 
 // Performance Insights panel (right half beside word cloud)
@@ -746,22 +777,22 @@ if(statsF.length){
 
   // Store full datasets for "Show More" modal
   insightData={
-    efficiency:{title:'🎯 Index Efficiency Score — All Indexes',desc:'Weighted score: 35% cache hit rate + 35% memory residency + 30% scan latency. Grade: A (90+), B (75+), C (60+), D (40+), F (<40). Sorted worst first.',colLabel:'Grade (Score)',items:allEffSorted,fmtVal:x=>`<span class="font-bold ${x.effColor}">${x.effGrade} (${x.effScore})</span>`},
-    rowsPerReq:{title:'📤 Rows Returned per Request — All Indexes',desc:'num_rows_returned ÷ num_requests. High values may indicate broad scans, missing WHERE clauses, or full index scans. Sorted highest first.',colLabel:'Rows / Req',items:allRowsSorted,fmtVal:x=>fmtN(Math.round(x.rowsPerReq))+' rows/req'},
-    scanIO:{title:'📊 Scan I/O per Request — All Indexes',desc:'scan_bytes_read ÷ num_requests. High values mean queries read large amounts of index data per scan. Consider covered indexes or tighter predicates. Sorted highest first.',colLabel:'Bytes / Req',items:allBytesSorted,fmtVal:x=>fmt(Math.round(x.bytesPerReq))+'/req'},
-    backlog:{title:'⏳ Indexing Backlog — All Indexes',desc:'num_docs_pending + num_docs_queued. Non-zero means the index is behind on mutations and queries may return stale data. Sorted largest backlog first.',colLabel:'Pending Docs',items:backlog,fmtVal:x=>fmtN(x.totalBacklog)+' docs'},
-    memEff:{title:'🧠 Memory Efficiency — All Indexes',desc:'items_count ÷ memory_used (in MB). Lower values mean the index uses more RAM per item — often wide keys, array indexes, or high overhead. Sorted least efficient first.',colLabel:'Items / MB',items:allMemEffSorted,fmtVal:x=>fmtN(Math.round(x.itemsPerMB))+' items/MB'},
-    wasted:{title:'🗑️ Never-Scanned Indexes — Full List',desc:'Indexes with last_known_scan_time = 0. These consume disk and RAM but have never served a query. Consider dropping them to reclaim resources. Sorted by disk size.',colLabel:'Disk / Memory',items:[...neverScannedItems].sort((a,b)=>(b.disk_size||0)-(a.disk_size||0)),fmtVal:x=>fmt(x.disk_size)+' / '+fmt(x.memory_used)}
+    efficiency:{title:'Index Efficiency Score — All Indexes',desc:'Weighted score: 35% cache hit rate + 35% memory residency + 30% scan latency. Grade: A (90+), B (75+), C (60+), D (40+), F (<40). Sorted worst first.',colLabel:'Grade (Score)',items:allEffSorted,fmtVal:x=>`<span class="font-bold ${x.effColor}">${x.effGrade} (${x.effScore})</span>`},
+    rowsPerReq:{title:'Rows Returned per Request — All Indexes',desc:'num_rows_returned ÷ num_requests. High values may indicate broad scans, missing WHERE clauses, or full index scans. Sorted highest first.',colLabel:'Rows / Req',items:allRowsSorted,fmtVal:x=>fmtN(Math.round(x.rowsPerReq))+' rows/req'},
+    scanIO:{title:'Scan I/O per Request — All Indexes',desc:'scan_bytes_read ÷ num_requests. High values mean queries read large amounts of index data per scan. Consider covered indexes or tighter predicates. Sorted highest first.',colLabel:'Bytes / Req',items:allBytesSorted,fmtVal:x=>fmt(Math.round(x.bytesPerReq))+'/req'},
+    backlog:{title:'Indexing Backlog — All Indexes',desc:'num_docs_pending + num_docs_queued. Non-zero means the index is behind on mutations and queries may return stale data. Sorted largest backlog first.',colLabel:'Pending Docs',items:backlog,fmtVal:x=>fmtN(x.totalBacklog)+' docs'},
+    memEff:{title:'Memory Efficiency — All Indexes',desc:'items_count ÷ memory_used (in MB). Lower values mean the index uses more RAM per item — often wide keys, array indexes, or high overhead. Sorted least efficient first.',colLabel:'Items / MB',items:allMemEffSorted,fmtVal:x=>fmtN(Math.round(x.itemsPerMB))+' items/MB'},
+    wasted:{title:'Never-Scanned Indexes — Full List',desc:'Indexes with last_known_scan_time = 0. These consume disk and RAM but have never served a query. Consider dropping them to reclaim resources. Sorted by disk size.',colLabel:'Disk / Memory',items:[...neverScannedItems].sort((a,b)=>(b.disk_size||0)-(a.disk_size||0)),fmtVal:x=>fmt(x.disk_size)+' / '+fmt(x.memory_used)}
   };
 
   const showMoreBtn=(key,total)=>total>3?`<button class="btn btn-ghost btn-xs w-full mt-1 text-[10px]" onclick="showInsightModal('${key}')">Show all ${total} →</button>`:'';
 
   html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3 overflow-y-auto" style="max-height:390px">
-<h3 class="font-bold text-sm mb-2">⚡ Performance Insights</h3>
+<h3 class="font-bold text-sm mb-2">Performance Insights</h3>
 <div class="space-y-3 text-xs">
 
 <div>
-  <div class="flex justify-between items-center mb-1"><div class="tooltip tooltip-right" data-tip="A combined health grade (A–F) for each index based on: 35% cache hit rate, 35% memory residency, and 30% scan latency. A = excellent (90+), B = good (75+), C = fair (60+), D = poor (40+), F = critical (<40). The 3 worst-scoring indexes are shown below."><span class="font-semibold cursor-help underline decoration-dotted">🎯 Index Efficiency Score</span></div><span class="font-bold text-lg ${overallColor}">${overallGrade}</span></div>
+  <div class="flex justify-between items-center mb-1"><div class="tooltip tooltip-right" data-tip="A combined health grade (A–F) for each index based on: 35% cache hit rate, 35% memory residency, and 30% scan latency. A = excellent (90+), B = good (75+), C = fair (60+), D = poor (40+), F = critical (<40). The 3 worst-scoring indexes are shown below."><span class="font-semibold cursor-help underline decoration-dotted">Index Efficiency Score</span></div><span class="font-bold text-lg ${overallColor}">${overallGrade}</span></div>
   <p class="text-base-content/50 text-[10px] mb-1">Weighted: 35% cache hit + 35% resident% + 30% latency</p>
   <div class="text-[10px] space-y-0.5">${worstEff.map(x=>`<div class="flex justify-between items-start"><div class="min-w-0 mr-2"><div class="font-semibold truncate">${x.name}</div><div class="text-[9px]">${bscLabel(x)}</div></div><span class="font-mono font-bold ${x.effColor} whitespace-nowrap">${x.effGrade} (${x.effScore})</span></div>`).join('')}</div>
   ${showMoreBtn('efficiency',allEffSorted.length)}
@@ -769,7 +800,7 @@ if(statsF.length){
 <div class="divider my-0"></div>
 
 <div>
-  <div class="flex justify-between items-center"><div class="tooltip tooltip-right" data-tip="Average number of rows returned per scan request (num_rows_returned ÷ num_requests). A very high ratio may indicate queries doing full index scans or missing WHERE clauses. A low ratio close to 1 is typical for point lookups. The top 3 highest-ratio indexes are shown."><span class="font-semibold cursor-help underline decoration-dotted">📤 Rows Returned / Request</span></div><span class="font-mono">${avgRowsPerReq.toFixed(1)} avg</span></div>
+  <div class="flex justify-between items-center"><div class="tooltip tooltip-right" data-tip="Average number of rows returned per scan request (num_rows_returned ÷ num_requests). A very high ratio may indicate queries doing full index scans or missing WHERE clauses. A low ratio close to 1 is typical for point lookups. The top 3 highest-ratio indexes are shown."><span class="font-semibold cursor-help underline decoration-dotted">Rows Returned / Request</span></div><span class="font-mono">${avgRowsPerReq.toFixed(1)} avg</span></div>
   <p class="text-base-content/50 text-[10px] mb-1">High ratio → broad scans or missing WHERE clause</p>
   <div class="text-[10px] space-y-0.5">${highRowsPerReq.map(x=>`<div class="flex justify-between items-start"><div class="min-w-0 mr-2"><div class="font-semibold truncate">${x.name}</div><div class="text-[9px]">${bscLabel(x)}</div></div><span class="font-mono text-warning whitespace-nowrap">${fmtN(Math.round(x.rowsPerReq))} rows/req</span></div>`).join('')}</div>
   ${showMoreBtn('rowsPerReq',allRowsSorted.length)}
@@ -777,7 +808,7 @@ if(statsF.length){
 <div class="divider my-0"></div>
 
 <div>
-  <div class="flex justify-between items-center"><div class="tooltip tooltip-right" data-tip="Bytes of index data read from disk per scan request (scan_bytes_read ÷ num_requests). High values mean queries are scanning large portions of the index — consider adding covered fields, tightening WHERE conditions, or adding a more selective index. Top 3 heaviest shown."><span class="font-semibold cursor-help underline decoration-dotted">📊 Scan I/O per Request</span></div></div>
+  <div class="flex justify-between items-center"><div class="tooltip tooltip-right" data-tip="Bytes of index data read from disk per scan request (scan_bytes_read ÷ num_requests). High values mean queries are scanning large portions of the index — consider adding covered fields, tightening WHERE conditions, or adding a more selective index. Top 3 heaviest shown."><span class="font-semibold cursor-help underline decoration-dotted">Scan I/O per Request</span></div></div>
   <p class="text-base-content/50 text-[10px] mb-1">Bytes read per scan — high = heavy I/O per query</p>
   <div class="text-[10px] space-y-0.5">${highBytesPerReq.length?highBytesPerReq.map(x=>`<div class="flex justify-between items-start"><div class="min-w-0 mr-2"><div class="font-semibold truncate">${x.name}</div><div class="text-[9px]">${bscLabel(x)}</div></div><span class="font-mono text-error whitespace-nowrap">${fmt(Math.round(x.bytesPerReq))}/req</span></div>`).join(''):'<span class="text-base-content/30">No scan data</span>'}</div>
   ${showMoreBtn('scanIO',allBytesSorted.length)}
@@ -785,7 +816,7 @@ if(statsF.length){
 <div class="divider my-0"></div>
 
 <div>
-  <div class="flex justify-between items-center"><div class="tooltip tooltip-right" data-tip="Total documents waiting to be indexed (num_docs_pending + num_docs_queued). Non-zero means the index is behind on mutations and queries may return stale results. Large backlogs can indicate undersized indexer resources or heavy write workloads."><span class="font-semibold cursor-help underline decoration-dotted">⏳ Indexing Backlog</span></div><span class="font-mono ${totalBacklog>0?'text-error':'text-success'}">${fmtN(totalBacklog)} docs</span></div>
+  <div class="flex justify-between items-center"><div class="tooltip tooltip-right" data-tip="Total documents waiting to be indexed (num_docs_pending + num_docs_queued). Non-zero means the index is behind on mutations and queries may return stale results. Large backlogs can indicate undersized indexer resources or heavy write workloads."><span class="font-semibold cursor-help underline decoration-dotted">Indexing Backlog</span></div><span class="font-mono ${totalBacklog>0?'text-error':'text-success'}">${fmtN(totalBacklog)} docs</span></div>
   <p class="text-base-content/50 text-[10px] mb-1">${backlog.length} index${backlog.length!==1?'es':''} behind on mutations — queries may read stale data</p>
   <div class="text-[10px] space-y-0.5">${backlog.slice(0,3).map(x=>`<div class="flex justify-between items-start"><div class="min-w-0 mr-2"><div class="font-semibold truncate">${x.name}</div><div class="text-[9px]">${bscLabel(x)}</div></div><span class="font-mono text-warning whitespace-nowrap">${fmtN(x.totalBacklog)} pending</span></div>`).join('')}</div>
   ${showMoreBtn('backlog',backlog.length)}
@@ -793,7 +824,7 @@ if(statsF.length){
 <div class="divider my-0"></div>
 
 <div>
-  <div class="flex justify-between items-center"><div class="tooltip tooltip-right" data-tip="How many indexed items each index stores per megabyte of RAM (items_count ÷ memory_used_MB). Lower values mean the index uses more memory per item — often due to wide keys, large array indexes, or high overhead. The 3 least efficient are shown. Compare with the average to find outliers."><span class="font-semibold cursor-help underline decoration-dotted">🧠 Memory Efficiency</span></div><span class="font-mono">${fmtN(Math.round(avgItemsPerMB))} items/MB</span></div>
+  <div class="flex justify-between items-center"><div class="tooltip tooltip-right" data-tip="How many indexed items each index stores per megabyte of RAM (items_count ÷ memory_used_MB). Lower values mean the index uses more memory per item — often due to wide keys, large array indexes, or high overhead. The 3 least efficient are shown. Compare with the average to find outliers."><span class="font-semibold cursor-help underline decoration-dotted">Memory Efficiency</span></div><span class="font-mono">${fmtN(Math.round(avgItemsPerMB))} items/MB</span></div>
   <p class="text-base-content/50 text-[10px] mb-1">Least efficient indexes (fewest items per MB RAM)</p>
   <div class="text-[10px] space-y-0.5">${leastMemEff.map(x=>`<div class="flex justify-between items-start"><div class="min-w-0 mr-2"><div class="font-semibold truncate">${x.name}</div><div class="text-[9px]">${bscLabel(x)}</div></div><span class="font-mono text-warning whitespace-nowrap">${fmtN(Math.round(x.itemsPerMB))} items/MB</span></div>`).join('')}</div>
   ${showMoreBtn('memEff',allMemEffSorted.length)}
@@ -801,7 +832,7 @@ if(statsF.length){
 <div class="divider my-0"></div>
 
 <div>
-  <div class="tooltip tooltip-right" data-tip="Categorizes all indexes by when they were last scanned. Hot = scanned within the last hour (actively used). Warm = within 1 day. Cold = within 1 week. Frozen = never scanned or over 1 week ago. A large Frozen segment means many indexes are consuming resources without serving queries."><span class="font-semibold mb-1 cursor-help underline decoration-dotted">🌡️ Index Activity Distribution</span></div>
+  <div class="tooltip tooltip-right" data-tip="Categorizes all indexes by when they were last scanned. Hot = scanned within the last hour (actively used). Warm = within 1 day. Cold = within 1 week. Frozen = never scanned or over 1 week ago. A large Frozen segment means many indexes are consuming resources without serving queries."><span class="font-semibold mb-1 cursor-help underline decoration-dotted">Index Activity Distribution</span></div>
   <div class="flex gap-1 w-full h-5 rounded overflow-hidden text-[9px] font-bold text-white text-center leading-5 mt-1">
     ${hotCount?`<div class="tooltip tooltip-bottom tooltip-success" data-tip="Hot: ${hotCount} indexes scanned within the last hour — actively serving queries" style="flex:${hotCount}"><div class="bg-success h-full flex items-center justify-center">${hotCount}</div></div>`:''}
     ${warmCount?`<div class="tooltip tooltip-bottom tooltip-info" data-tip="Warm: ${warmCount} indexes scanned within the last day" style="flex:${warmCount}"><div class="bg-info h-full flex items-center justify-center">${warmCount}</div></div>`:''}
@@ -809,13 +840,13 @@ if(statsF.length){
     ${frozenCount?`<div class="tooltip tooltip-bottom tooltip-error" data-tip="Frozen: ${frozenCount} indexes never scanned or inactive for over a week — candidates for removal" style="flex:${frozenCount}"><div class="bg-error h-full flex items-center justify-center">${frozenCount}</div></div>`:''}
   </div>
   <div class="flex justify-between text-[9px] text-base-content/50 mt-0.5">
-    <span>🟢 Hot ${hotCount}</span><span>🔵 Warm ${warmCount}</span><span>🟡 Cold ${coldCount}</span><span>🔴 Frozen ${frozenCount}</span>
+    <span>Hot ${hotCount}</span><span>Warm ${warmCount}</span><span>Cold ${coldCount}</span><span>Frozen ${frozenCount}</span>
   </div>
 </div>
 <div class="divider my-0"></div>
 
 <div>
-  <div class="flex justify-between items-center"><div class="tooltip tooltip-right" data-tip="Total disk space and RAM consumed by indexes that have never been scanned (last_known_scan_time = 0). These indexes cost storage and memory but provide zero query value. Dropping them reclaims these resources immediately."><span class="font-semibold cursor-help underline decoration-dotted">🗑️ Wasted Resources</span></div><span class="font-mono text-[10px]">${neverScannedItems.length} index${neverScannedItems.length!==1?'es':''}</span></div>
+  <div class="flex justify-between items-center"><div class="tooltip tooltip-right" data-tip="Total disk space and RAM consumed by indexes that have never been scanned (last_known_scan_time = 0). These indexes cost storage and memory but provide zero query value. Dropping them reclaims these resources immediately."><span class="font-semibold cursor-help underline decoration-dotted">Wasted Resources</span></div><span class="font-mono text-[10px]">${neverScannedItems.length} index${neverScannedItems.length!==1?'es':''}</span></div>
   <div class="flex gap-2 mt-1">
     <div class="flex-1 bg-error/10 rounded px-2 py-1 text-center"><div class="text-[9px] text-base-content/50">Disk Saved</div><div class="font-mono font-bold text-error text-sm">${fmt(wastedDisk)}</div></div>
     <div class="flex-1 bg-error/10 rounded px-2 py-1 text-center"><div class="text-[9px] text-base-content/50">Memory Saved</div><div class="font-mono font-bold text-error text-sm">${fmt(wastedMem)}</div></div>
@@ -846,14 +877,14 @@ if(statsF.length){
 
   // Top/Bottom tables
   const metrics=[
-    {key:'disk_size',label:'💾 Largest Disk Size',fmt:fmt,desc:true},
-    {key:'frag_percent',label:'🔴 Highest Fragmentation',fmt:v=>v+'%',desc:true},
-    {key:'resident_percent',label:'🔻 Lowest Resident %',fmt:v=>v+'%',desc:false},
-    {key:'cache_hit_percent',label:'🔻 Lowest Cache Hit %',fmt:v=>v+'%',desc:false},
-    {key:'bloat_ratio',label:'📈 Highest Bloat Ratio',fmt:v=>v.toFixed(1)+'x',desc:true},
-    {key:'memory_used',label:'🧠 Most Memory Used',fmt:fmt,desc:true},
-    {key:'num_requests',label:'📊 Most Requests',fmt:fmtN,desc:true},
-    {key:'items_count',label:'📦 Most Items',fmt:fmtN,desc:true},
+    {key:'disk_size',label:'Largest Disk Size',fmt:fmt,desc:true},
+    {key:'frag_percent',label:'Highest Fragmentation',fmt:v=>v+'%',desc:true},
+    {key:'resident_percent',label:'Lowest Resident %',fmt:v=>v+'%',desc:false},
+    {key:'cache_hit_percent',label:'Lowest Cache Hit %',fmt:v=>v+'%',desc:false},
+    {key:'bloat_ratio',label:'Highest Bloat Ratio',fmt:v=>v.toFixed(1)+'x',desc:true},
+    {key:'memory_used',label:'Most Memory Used',fmt:fmt,desc:true},
+    {key:'num_requests',label:'Most Requests',fmt:fmtN,desc:true},
+    {key:'items_count',label:'Most Items',fmt:fmtN,desc:true},
   ];
   metrics.forEach(m=>{
     const allSorted=[...statsF].filter(x=>x[m.key]!=null&&(m.desc||x[m.key]>=0)).sort((a,b)=>m.desc?b[m.key]-a[m.key]:a[m.key]-b[m.key]);
@@ -872,7 +903,7 @@ if(statsF.length){
   const never=statsF.filter(x=>!x.last_known_scan_time||x.last_known_scan_time===0);
   if(never.length){
     never.sort((a,b)=>(b.disk_size||0)-(a.disk_size||0));
-    html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center gap-2 mb-2"><h3 class="font-bold text-sm">⚠️ Never Scanned Indexes (${never.length})</h3>${nodeCountBadges(never)}</div><p class="text-xs text-base-content/50 mb-2">These indexes consume disk but have never been queried. Consider dropping them.</p><div class="overflow-y-auto max-h-[400px]"><table class="table table-xs table-pin-rows"><thead><tr class="bg-base-200"><th>Index</th><th>Node</th><th>Bucket</th><th>Scope</th><th class="text-right">Disk</th></tr></thead><tbody>`;
+    html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center gap-2 mb-2"><h3 class="font-bold text-sm">Never Scanned Indexes (${never.length})</h3>${nodeCountBadges(never)}</div><p class="text-xs text-base-content/50 mb-2">These indexes consume disk but have never been queried. Consider dropping them.</p><div class="overflow-y-auto max-h-[400px]"><table class="table table-xs table-pin-rows"><thead><tr class="bg-base-200"><th>Index</th><th>Node</th><th>Bucket</th><th>Scope</th><th class="text-right">Disk</th></tr></thead><tbody>`;
     never.forEach(x=>{html+=`<tr><td class="font-semibold">${x.name}${x._replicaTotal>1?replicaBadge(x):''}</td><td class="text-xs">${x._nodeName||'—'}</td><td>${x.bucket}</td><td>${x.scope}</td><td class="font-mono text-xs text-right">${fmt(x.disk_size)}</td></tr>`});
     html+=`</tbody></table></div></div></div>`;
   }
@@ -960,7 +991,24 @@ function switchItemDistMode(mode){
   if(itemDistStatsF)renderItemDistChart(itemDistStatsF,mode);
 }
 
-function renderWordCloud(sysData,targetId){const el=document.getElementById(targetId||'wc-box');if(!el)return;const fc={};sysData.forEach(idx=>{(idx.keys||[]).forEach(rk=>{let field=rk.replace(/`/g,'').trim();const ms=field.match(/[a-zA-Z_][a-zA-Z0-9_]*/g);if(ms)ms.forEach(m=>{const skip=['all','array','for','in','end','meta','id','xattrs','op','name','val','least','ifmissing','object_pairs','null','desc','asc','include','missing','type'];if(!skip.includes(m.toLowerCase())&&m.length>1)fc[m]=(fc[m]||0)+1})})});const words=Object.entries(fc).map(([n,c])=>({name:n,value:c})).sort((a,b)=>b.value-a.value);if(!words.length){el.innerHTML='<div class="flex items-center justify-center h-full text-base-content/30">No indexed fields found</div>';return}const ch=echarts.init(el);activeCharts.push(ch);ch.setOption({tooltip:{formatter:p=>`<b>${p.name}</b><br>Used in ${p.value} index${p.value>1?'es':''}`},series:[{type:'wordCloud',shape:'circle',left:'center',top:'center',width:'90%',height:'85%',sizeRange:[16,68],rotationRange:[-30,30],rotationStep:15,gridSize:8,drawOutOfBound:false,textStyle:{fontFamily:'sans-serif',fontWeight:'bold',color:()=>['#c0392b','#e67e22','#2980b9','#27ae60','#8e44ad','#d35400','#16a085','#2c3e50','#f39c12','#7f8c8d'][Math.floor(Math.random()*10)]},emphasis:{textStyle:{shadowBlur:10,shadowColor:'rgba(0,0,0,.2)'}},data:words}]})}
+const WC_COLORS=['#c0392b','#e67e22','#2980b9','#27ae60','#8e44ad','#d35400','#16a085','#2c3e50','#f39c12','#7f8c8d'];
+let wcMode='cloud',wcFilteredCache=null;
+
+function getFieldCounts(sysData){const fc={};sysData.forEach(idx=>{(idx.keys||[]).forEach(rk=>{let field=rk.replace(/`/g,'').trim();const ms=field.match(/[a-zA-Z_][a-zA-Z0-9_]*/g);if(ms)ms.forEach(m=>{const skip=['all','array','for','in','end','meta','id','xattrs','op','name','val','least','ifmissing','object_pairs','null','desc','asc','include','missing','type'];if(!skip.includes(m.toLowerCase())&&m.length>1)fc[m]=(fc[m]||0)+1})})});return Object.entries(fc).map(([n,c])=>({name:n,value:c})).sort((a,b)=>b.value-a.value)}
+
+function renderWordCloud(sysData,targetId){const el=document.getElementById(targetId||'wc-box');if(!el)return;const words=getFieldCounts(sysData);if(!words.length){el.innerHTML='<div class="flex items-center justify-center h-full text-base-content/30">No indexed fields found</div>';return}const ch=echarts.init(el);activeCharts.push(ch);ch.setOption({tooltip:{formatter:p=>`<b>${p.name}</b><br>Used in ${p.value} index${p.value>1?'es':''}`},series:[{type:'wordCloud',shape:'circle',left:'center',top:'center',width:'90%',height:'85%',sizeRange:[16,68],rotationRange:[-30,30],rotationStep:15,gridSize:8,drawOutOfBound:false,textStyle:{fontFamily:'sans-serif',fontWeight:'bold',color:()=>WC_COLORS[Math.floor(Math.random()*WC_COLORS.length)]},emphasis:{textStyle:{shadowBlur:10,shadowColor:'rgba(0,0,0,.2)'}},data:words}]})}
+
+function renderFieldPie(sysData,targetId){const el=document.getElementById(targetId||'wc-box');if(!el)return;const words=getFieldCounts(sysData);if(!words.length){el.innerHTML='<div class="flex items-center justify-center h-full text-base-content/30">No indexed fields found</div>';return}const ch=echarts.init(el);activeCharts.push(ch);ch.setOption({tooltip:{trigger:'item',formatter:function(p){return'<b>'+p.name+'</b><br>Used in '+p.value+' index'+(p.value>1?'es':'')+' ('+p.percent+'%)'}},series:[{type:'pie',radius:['30%','70%'],center:['50%','50%'],itemStyle:{borderRadius:4,borderColor:'#fff',borderWidth:2},label:{show:true,formatter:function(p){return p.name+': '+p.value},fontSize:9},data:words.map((w,i)=>({name:w.name,value:w.value,itemStyle:{color:WC_COLORS[i%WC_COLORS.length]}}))}]})}
+
+function switchWcMode(mode){
+  wcMode=mode;
+  document.getElementById('wc-cloud-btn').classList.toggle('btn-active',mode==='cloud');
+  document.getElementById('wc-pie-btn').classList.toggle('btn-active',mode==='pie');
+  const el=document.getElementById('wc-box-sys');if(!el||!wcFilteredCache)return;
+  const existing=echarts.getInstanceByDom(el);if(existing){activeCharts=activeCharts.filter(c=>c!==existing);existing.dispose()}
+  if(mode==='pie')renderFieldPie(wcFilteredCache,'wc-box-sys');
+  else renderWordCloud(wcFilteredCache,'wc-box-sys');
+}
 
 window.addEventListener('resize',()=>activeCharts.forEach(c=>c.resize()));
 
@@ -978,7 +1026,7 @@ async function saveSystemToServer(){
   const js=document.getElementById('system-json').value.trim();
   if(!js){setStatus('system-status','Nothing to save','error');return}
   try{JSON.parse(js)}catch{try{JSON.parse('['+js+']')}catch{setStatus('system-status','Invalid JSON','error');return}}
-  try{await apiSave('system-indexes',JSON.parse(js.startsWith('[')?js:'['+js+']'));setStatus('system-status','💾 Saved to server','success');updateSavedCount()}catch(e){setStatus('system-status','Save failed: '+e.message,'error')}
+  try{await apiSave('system-indexes',JSON.parse(js.startsWith('[')?js:'['+js+']'));setStatus('system-status','Saved to server','success');updateSavedCount()}catch(e){setStatus('system-status','Save failed: '+e.message,'error')}
 }
 
 // Save all stats nodes
@@ -994,7 +1042,7 @@ async function saveStatsToServer(){
     await apiSave(safeName,{nodeName:name,data:JSON.parse(json)});
     saved++;
   }
-  if(saved)setStatus('stats-status',`💾 Saved ${saved} node(s) to server`,'success');
+  if(saved)setStatus('stats-status',`Saved ${saved} node(s) to server`,'success');
   else setStatus('stats-status','Nothing to save','error');
   updateSavedCount();
 }
@@ -1010,14 +1058,12 @@ async function refreshFileList(){
   el.innerHTML=files.map(f=>{
     const kb=(f.size/1024).toFixed(1);
     const date=new Date(f.modified).toLocaleString();
-    const icon=f.name.startsWith('stats-')?'📈':'📊';
     return`<div class="flex items-center gap-2 p-2 bg-base-200 rounded">
-      <span class="text-sm">${icon}</span>
       <div class="flex-1 min-w-0">
         <div class="font-mono text-xs font-semibold truncate">${f.name}</div>
         <div class="text-[10px] text-base-content/40">${kb} KB · ${date}</div>
       </div>
-      <button class="btn btn-ghost btn-xs text-error" onclick="deleteOneFile('${f.name}')">🗑️</button>
+      <button class="btn btn-ghost btn-xs text-error" onclick="deleteOneFile('${f.name}')">Delete</button>
     </div>`}).join('');
 }
 
@@ -1080,6 +1126,1123 @@ async function autoLoad(){
   }
 }
 window.addEventListener('DOMContentLoaded',autoLoad);
+
+// ===== "MOVE IT, MOVE IT" TAB =====
+
+// Hash function: FNV-1a 32-bit → 8-char hex
+function fnv1aHash(str,salt){
+  const input=salt+':'+str;
+  let h=0x811c9dc5;
+  for(let i=0;i<input.length;i++){h^=input.charCodeAt(i);h=Math.imul(h,0x01000193)}
+  return(h>>>0).toString(16).padStart(8,'0');
+}
+const _b62='0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+function fnv1aShort(str,salt){
+  const input=salt+':'+str;
+  let h=0x811c9dc5;
+  for(let i=0;i<input.length;i++){h^=input.charCodeAt(i);h=Math.imul(h,0x01000193)}
+  let n=h>>>0,s='';
+  for(let i=0;i<4;i++){s=_b62[n%62]+s;n=Math.floor(n/62)}
+  return s;
+}
+
+// Build a salt from system:indexes JSON (unique per dataset)
+function buildHashSalt(){
+  if(globalSystemFlat.length){
+    const src=globalSystemFlat.map(x=>x.fullKey+':'+x.keysStr+':'+(x.condition||'')).sort().join('|');
+    return fnv1aHash(src,'cb-salt');
+  }
+  // Fallback: derive from stats data
+  const src=globalStatsFlat.flatMap(n=>n.flat.map(x=>x.fullKey)).sort().join('|');
+  return fnv1aHash(src,'cb-salt-stats');
+}
+
+// Global lookup: hash → real values, stored when hashed topo is built
+let aiHashLookup={},aiHashSalt='',aiNodeHashLookup={};
+
+// TOON library: loaded dynamically from CDN
+let toonEncode=null,toonDecode=null,toonLoaded=false,toonLoading=false;
+async function loadTOON(){
+  if(toonLoaded||toonLoading)return toonLoaded;
+  toonLoading=true;
+  try{
+    const mod=await import('https://cdn.jsdelivr.net/npm/@toon-format/toon@2.1.0/+esm');
+    toonEncode=mod.encode;toonDecode=mod.decode;toonLoaded=true;
+    console.log('TOON library loaded');
+  }catch(e){
+    console.warn('TOON library unavailable, falling back to minified JSON',e);
+    toonLoaded=false;
+  }
+  toonLoading=false;
+  return toonLoaded;
+}
+
+function buildResponseSchema(sampleNodeKey,isObfuscated){
+  const idDesc=isObfuscated?'hashId':'fullKey';
+  return{
+    nodes:{[sampleNodeKey]:[`<${idDesc}>,<bucket>,<scope>,<collection>,<index>,<size>,<memoryUsed>,<itemsCount>,<requests>,<replicaIndex>,<replicaTotal>,<inMemoryPercent>,<fragPercent>,<cacheHitPercent>`]},
+    description:'Explain WHY this arrangement is better. Reference specific indexes, buckets, and nodes by their id/name from the input. Explain what was moved and why it improves balance.',
+    _meta:{nodeCount:0,totalIndexes:0}
+  };
+}
+
+function buildHashedTopology(){
+  const salt=buildHashSalt();
+  aiHashSalt=salt;
+  const lookup={};
+  const nodeLookup={};
+  const topo={nodes:{}};
+  const filtered=getFilteredStats();
+
+  filtered.forEach(node=>{
+    const nodeHash=fnv1aShort(node.nodeName,salt);
+    nodeLookup[nodeHash]=node.nodeName;
+    topo.nodes[nodeHash]=node.flat.map(idx=>{
+      const bHash=fnv1aShort(idx.bucket,salt);
+      const sHash=fnv1aShort(idx.scope,salt);
+      const cHash=fnv1aShort(idx.collection,salt);
+      const nHash=fnv1aShort(idx.name,salt);
+      const fullHash=bHash+':'+sHash+':'+cHash+':'+nHash;
+      const rKey=idx.fullKey;
+      const rNodes=globalReplicaMap[rKey]||[node.nodeName];
+      const rIdx=rNodes.indexOf(node.nodeName)+1;
+      lookup[fullHash]={bucket:idx.bucket,scope:idx.scope,collection:idx.collection,name:idx.name,fullKey:idx.fullKey};
+      lookup[bHash]={type:'bucket',value:idx.bucket};
+      lookup[sHash]={type:'scope',value:idx.scope};
+      lookup[cHash]={type:'collection',value:idx.collection};
+      lookup[nHash]={type:'index',value:idx.name};
+      return{
+        id:fullHash,bucket:bHash,scope:sHash,collection:cHash,index:nHash,
+        size:idx.disk_size||0,memoryUsed:idx.memory_used||0,itemsCount:idx.items_count||0,
+        requests:idx.num_requests||0,replicaIndex:rIdx,replicaTotal:rNodes.length,
+        inMemoryPercent:idx.resident_percent!=null?idx.resident_percent:100,
+        fragPercent:idx.frag_percent||0,cacheHitPercent:idx.cache_hit_percent||0
+      };
+    });
+  });
+
+  aiHashLookup=lookup;
+  aiNodeHashLookup=nodeLookup;
+  const sampleNode=Object.keys(topo.nodes)[0]||'nodeHash';
+  topo._meta={nodeCount:filtered.length,totalIndexes:filtered.reduce((s,n)=>s+n.flat.length,0),generatedAt:new Date().toISOString()};
+  topo._instructions_json='Rearrange indexes across nodes for optimal balance. Balance by: size, memory, requests, bucket/scope/collection diversity. Replicas of the same index (same id) MUST be on different nodes. Prefer not moving very large indexes unless it significantly improves balance. Return your response as JSON matching _response_schema exactly. Each index entry MUST be a plain CSV string (e.g. "id,bucket,scope,collection,index,0,0,0,0,1,1,100,0,0") — do NOT wrap the string in extra quotes or escape quotes within it. In the "description" field, explain WHY this arrangement is better — reference specific index ids, bucket hashes, and node hashes from the input.';
+  topo._instructions_toon='This input is in TOON format (Token-Oriented Object Notation, see toonformat.dev). Each node key has a typed array header like "nodeHash"[count]{field1,field2,...}: followed by CSV rows matching that header. Rearrange indexes across nodes for optimal balance. Balance by: size, memory, requests, bucket/scope/collection diversity. Replicas of the same index (same id) MUST be on different nodes. Prefer not moving very large indexes unless it significantly improves balance. Return your response as JSON matching _response_schema exactly. Each index entry MUST be a plain CSV string (e.g. "id,bucket,scope,collection,index,0,0,0,0,1,1,100,0,0") — do NOT wrap the string in extra quotes or escape quotes within it. In the "description" field, explain WHY this arrangement is better — reference specific index ids, bucket hashes, and node hashes from the input.';
+  topo._response_schema=buildResponseSchema(sampleNode,true);
+  return topo;
+}
+
+function buildPlainTopology(){
+  aiHashSalt='';aiHashLookup={};aiNodeHashLookup={};
+  const topo={nodes:{}};
+  const filtered=getFilteredStats();
+  filtered.forEach(node=>{
+    aiNodeHashLookup[node.nodeName]=node.nodeName;
+    topo.nodes[node.nodeName]=node.flat.map(idx=>{
+      const rKey=idx.fullKey;
+      const rNodes=globalReplicaMap[rKey]||[node.nodeName];
+      const rIdx=rNodes.indexOf(node.nodeName)+1;
+      return{
+        id:idx.fullKey,bucket:idx.bucket,scope:idx.scope,collection:idx.collection,index:idx.name,
+        size:idx.disk_size||0,memoryUsed:idx.memory_used||0,itemsCount:idx.items_count||0,
+        requests:idx.num_requests||0,replicaIndex:rIdx,replicaTotal:rNodes.length,
+        inMemoryPercent:idx.resident_percent!=null?idx.resident_percent:100,
+        fragPercent:idx.frag_percent||0,cacheHitPercent:idx.cache_hit_percent||0
+      };
+    });
+  });
+  const sampleNode=Object.keys(topo.nodes)[0]||'nodeName';
+  topo._meta={nodeCount:filtered.length,totalIndexes:filtered.reduce((s,n)=>s+n.flat.length,0),generatedAt:new Date().toISOString()};
+  topo._instructions_json='Rearrange indexes across nodes for optimal balance. Balance by: size, memory, requests, bucket/scope/collection diversity. Replicas of the same index (same id) MUST be on different nodes. Prefer not moving very large indexes unless it significantly improves balance. Return your response as JSON matching _response_schema exactly. Each index entry MUST be a plain CSV string (e.g. "id,bucket,scope,collection,index,0,0,0,0,1,1,100,0,0") — do NOT wrap the string in extra quotes or escape quotes within it. In the "description" field, explain WHY this arrangement is better — reference specific index names, buckets, and nodes.';
+  topo._instructions_toon='This input is in TOON format (Token-Oriented Object Notation, see toonformat.dev). Each node key has a typed array header like "nodeName"[count]{field1,field2,...}: followed by CSV rows matching that header. Rearrange indexes across nodes for optimal balance. Balance by: size, memory, requests, bucket/scope/collection diversity. Replicas of the same index (same id) MUST be on different nodes. Prefer not moving very large indexes unless it significantly improves balance. Return your response as JSON matching _response_schema exactly. Each index entry MUST be a plain CSV string (e.g. "id,bucket,scope,collection,index,0,0,0,0,1,1,100,0,0") — do NOT wrap the string in extra quotes or escape quotes within it. In the "description" field, explain WHY this arrangement is better — reference specific index names, buckets, and nodes.';
+  topo._response_schema=buildResponseSchema(sampleNode,false);
+  return topo;
+}
+
+function buildCurrentTopology(){
+  const topo={};
+  const filtered=getFilteredStats();
+  filtered.forEach(node=>{
+    topo[node.nodeName]=node.flat.map(idx=>{
+      const rKey=idx.fullKey;
+      const nodes=globalReplicaMap[rKey]||[node.nodeName];
+      const rIdx=nodes.indexOf(node.nodeName)+1;
+      return{name:idx.fullKey,displayName:idx.name,size:idx.disk_size||0,memoryUsed:idx.memory_used||0,itemsCount:idx.items_count||0,requests:idx.num_requests||0,bucket:idx.bucket,scope:idx.scope,collection:idx.collection,replicaIndex:rIdx,replicaTotal:nodes.length,inMemoryPercent:idx.resident_percent!=null?idx.resident_percent:100};
+    });
+  });
+  return topo;
+}
+
+function computeRebalancePlan(){
+  const filtered=getFilteredStats();
+  const nodeNames=filtered.map(n=>n.nodeName);
+  const nodeCount=nodeNames.length;
+  if(nodeCount<2)return null;
+
+  // Collect all indexes with their current placement
+  const allIndexes=[];
+  filtered.forEach(node=>{
+    node.flat.forEach(idx=>{
+      allIndexes.push({
+        fullKey:idx.fullKey,name:idx.name,bucket:idx.bucket,scope:idx.scope,collection:idx.collection,
+        disk_size:idx.disk_size||0,memory_used:idx.memory_used||0,items_count:idx.items_count||0,
+        num_requests:idx.num_requests||0,currentNode:node.nodeName,
+        _replicaNodes:idx._replicaNodes||[node.nodeName],_replicaTotal:idx._replicaTotal||1,_replicaIndex:idx._replicaIndex||1
+      });
+    });
+  });
+
+  // Group replicas: primary key is bucket:scope:collection:baseName (strip replica id)
+  const replicaGroups={};
+  allIndexes.forEach(idx=>{
+    const baseKey=idx.bucket+':'+idx.scope+':'+idx.collection+':'+idx.name.replace(/ \(replica \d+\)$/,'');
+    if(!replicaGroups[baseKey])replicaGroups[baseKey]=[];
+    replicaGroups[baseKey].push(idx);
+  });
+
+  // Build proposed assignment: greedy approach
+  // Sort all indexes by disk_size desc (big first) — but prefer NOT moving big ones
+  const assignment={};// nodeName -> [{...idx, fromNode}]
+  nodeNames.forEach(n=>{assignment[n]=[]});
+
+  // Track node totals
+  const nodeTotals={};
+  nodeNames.forEach(n=>{nodeTotals[n]={disk:0,mem:0,count:0,buckets:{}}});
+
+  // Score a node for an index placement
+  function nodeScore(nodeName,idx,excludeNodes){
+    if(excludeNodes.includes(nodeName))return-Infinity;// replica can't be on same node
+    const t=nodeTotals[nodeName];
+    // Lower score = better placement
+    // Penalize: high disk, high count, same bucket concentration
+    const diskPenalty=t.disk/(1024*1024);// MB
+    const countPenalty=t.count*50;
+    const bucketKey=idx.bucket+':'+idx.scope+':'+idx.collection;
+    const bucketConcentration=(t.buckets[bucketKey]||0)*200;
+    return-(diskPenalty+countPenalty+bucketConcentration);
+  }
+
+  // Sort replica groups: biggest first (by total disk of all replicas)
+  const sortedGroups=Object.entries(replicaGroups).sort((a,b)=>{
+    const sA=a[1].reduce((s,x)=>s+x.disk_size,0);
+    const sB=b[1].reduce((s,x)=>s+x.disk_size,0);
+    return sB-sA;
+  });
+
+  sortedGroups.forEach(([,replicas])=>{
+    const usedNodes=[];
+    // Sort replicas within group by replicaIndex
+    replicas.sort((a,b)=>a._replicaIndex-b._replicaIndex);
+    replicas.forEach(idx=>{
+      // Find best node (highest score)
+      let bestNode=null,bestScore=-Infinity;
+      nodeNames.forEach(n=>{
+        const sc=nodeScore(n,idx,usedNodes);
+        if(sc>bestScore){bestScore=sc;bestNode=n}
+      });
+      if(!bestNode)bestNode=nodeNames[0];// fallback
+      usedNodes.push(bestNode);
+      assignment[bestNode].push({...idx,fromNode:idx.currentNode,toNode:bestNode});
+      const t=nodeTotals[bestNode];
+      t.disk+=idx.disk_size;t.mem+=idx.memory_used;t.count++;
+      const bk=idx.bucket+':'+idx.scope+':'+idx.collection;
+      t.buckets[bk]=(t.buckets[bk]||0)+1;
+    });
+  });
+
+  // Generate moves: only where toNode !== fromNode
+  const moves=[];
+  for(const[nodeName,indexes]of Object.entries(assignment)){
+    indexes.forEach(idx=>{
+      if(idx.fromNode!==idx.toNode){
+        moves.push(idx);
+      }
+    });
+  }
+
+  // Generate ALTER INDEX statements
+  const alterStmts=[];
+  // Group moves by index base name (all replicas of an index move together via one statement)
+  const movesByIndex={};
+  moves.forEach(m=>{
+    const baseName=m.name.replace(/ \(replica \d+\)$/,'');
+    const ks=m.scope!=='_default'||m.collection!=='_default'?`\`${m.bucket}\`.\`${m.scope}\`.\`${m.collection}\``:`\`${m.bucket}\``;
+    const key=baseName+'||'+ks;
+    if(!movesByIndex[key])movesByIndex[key]={baseName,ks,nodes:new Set()};
+    movesByIndex[key].nodes.add(m.toNode);
+  });
+  // Also include nodes where non-moved replicas already live
+  for(const[key,info]of Object.entries(movesByIndex)){
+    // Find all replicas for this base name in assignment
+    for(const[nodeName,indexes]of Object.entries(assignment)){
+      indexes.forEach(idx=>{
+        const bn=idx.name.replace(/ \(replica \d+\)$/,'');
+        const iks=idx.scope!=='_default'||idx.collection!=='_default'?`\`${idx.bucket}\`.\`${idx.scope}\`.\`${idx.collection}\``:`\`${idx.bucket}\``;
+        if(bn+'||'+iks===key)info.nodes.add(nodeName);
+      });
+    }
+  }
+  for(const[,info]of Object.entries(movesByIndex)){
+    const nodeList=[...info.nodes].map(n=>`"${n}"`).join(', ');
+    alterStmts.push(`ALTER INDEX \`${info.baseName}\` ON ${info.ks}\nWITH {"action": "move", "nodes": [${nodeList}]};`);
+  }
+
+  // Compute before/after scores
+  const beforeScore=calcLumpinessScore(filtered);
+
+  // Compute after metrics
+  const afterDiskPerNode=nodeNames.map(n=>nodeTotals[n].disk);
+  const afterCountPerNode=nodeNames.map(n=>nodeTotals[n].count);
+  const afterMemPerNode=nodeNames.map(n=>nodeTotals[n].mem);
+  const totalDisk=afterDiskPerNode.reduce((s,d)=>s+d,0);
+  const totalCount=afterCountPerNode.reduce((s,c)=>s+c,0);
+  const totalMem=afterMemPerNode.reduce((s,m)=>s+m,0);
+  const idealDisk=totalDisk/nodeCount;
+  const idealCount=totalCount/nodeCount;
+  const idealMem=totalMem/nodeCount;
+  const diskImb=idealDisk>0?afterDiskPerNode.reduce((s,d)=>s+Math.abs(d-idealDisk),0)/totalDisk:0;
+  const countImb=idealCount>0?afterCountPerNode.reduce((s,c)=>s+Math.abs(c-idealCount),0)/totalCount:0;
+  const memImb=idealMem>0?afterMemPerNode.reduce((s,m)=>s+Math.abs(m-idealMem),0)/totalMem:0;
+  // Check replica co-location in proposed
+  let replicaImb=0;
+  const proposedReplicaMap={};
+  for(const[nodeName,indexes]of Object.entries(assignment)){
+    indexes.forEach(idx=>{
+      if(!proposedReplicaMap[idx.fullKey])proposedReplicaMap[idx.fullKey]=[];
+      proposedReplicaMap[idx.fullKey].push(nodeName);
+    });
+  }
+  const rKeys=Object.entries(proposedReplicaMap).filter(([,ns])=>ns.length>1);
+  if(rKeys.length){let co=0;rKeys.forEach(([,ns])=>{if(new Set(ns).size<ns.length)co++});replicaImb=co/rKeys.length}
+  const rawImb=countImb*0.30+diskImb*0.30+memImb*0.20+replicaImb*0.20;
+  const afterScoreVal=Math.max(0,Math.min(100,Math.round((1-rawImb)*100)));
+
+  return{moves,alterStmts,assignment,nodeTotals,nodeNames,beforeScore,afterScore:afterScoreVal,afterDiskPerNode,afterCountPerNode,afterMemPerNode};
+}
+
+function renderMoveIt(){
+  const c=document.getElementById('moveit-content');
+  c.innerHTML='';
+  activeCharts=activeCharts.filter(ch=>{try{ch.dispose()}catch{}return false});
+
+  if(globalStatsFlat.length<2){
+    c.innerHTML='<div class="text-center py-12 text-base-content/40">Load data in <b>Stats API</b> tab with at least <b>2 nodes</b> to use the rebalance planner.</div>';
+    return;
+  }
+
+  const topo=buildCurrentTopology();
+  const plan=computeRebalancePlan();
+  if(!plan){c.innerHTML='<div class="alert alert-warning">Could not compute rebalance plan.</div>';return}
+
+  const beforeScore=plan.beforeScore?plan.beforeScore.score:0;
+  const afterScore=plan.afterScore;
+  const scoreDelta=afterScore-beforeScore;
+  const deltaColor=scoreDelta>0?'text-success':scoreDelta<0?'text-error':'text-base-content/50';
+  const deltaSign=scoreDelta>0?'+':'';
+
+  let html='';
+
+  // Score comparison card
+  html+=`<div class="card bg-base-100 shadow-sm mb-4"><div class="card-body p-4">
+<h3 class="font-bold text-sm mb-3">Lumpiness Score: Before → After</h3>
+<div class="flex items-center justify-center gap-8 flex-wrap">
+  <div class="text-center">
+    <div class="text-xs text-base-content/50 mb-1">Current</div>
+    <div class="radial-progress ${beforeScore>=75?'text-success':beforeScore>=60?'text-warning':'text-error'} font-bold text-2xl" style="--value:${beforeScore};--size:6rem;--thickness:6px" role="progressbar">${beforeScore}</div>
+  </div>
+  <div class="text-3xl font-bold text-base-content/30">→</div>
+  <div class="text-center">
+    <div class="text-xs text-base-content/50 mb-1">Proposed</div>
+    <div class="radial-progress ${afterScore>=75?'text-success':afterScore>=60?'text-warning':'text-error'} font-bold text-2xl" style="--value:${afterScore};--size:6rem;--thickness:6px" role="progressbar">${afterScore}</div>
+  </div>
+  <div class="text-center">
+    <div class="text-xs text-base-content/50 mb-1">Change</div>
+    <div class="text-2xl font-bold font-mono ${deltaColor}">${deltaSign}${scoreDelta}</div>
+  </div>
+</div>
+<p class="text-xs text-base-content/50 text-center mt-2">${plan.moves.length} index${plan.moves.length!==1?'es':''} would move · ${plan.alterStmts.length} ALTER INDEX statement${plan.alterStmts.length!==1?'s':''}</p>
+</div></div>`;
+
+  // Before / After node comparison
+  html+=`<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">`;
+
+  // Before table
+  html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3">
+<h3 class="font-bold text-sm mb-2">Current Distribution</h3>
+<table class="table table-xs"><thead><tr class="bg-base-200"><th>Node</th><th class="text-right">Indexes</th><th class="text-right">Disk</th><th class="text-right">Memory</th><th class="text-right">Buckets</th></tr></thead><tbody>`;
+  plan.nodeNames.forEach((n,i)=>{
+    const node=globalStatsFlat.find(x=>x.nodeName===n);
+    const fl=node?node.flat:[];
+    const disk=fl.reduce((s,x)=>s+(x.disk_size||0),0);
+    const mem=fl.reduce((s,x)=>s+(x.memory_used||0),0);
+    const bkts=new Set(fl.map(x=>x.bucket)).size;
+    html+=`<tr><td class="font-semibold"><span class="badge badge-xs text-white" style="background:${REPLICA_COLORS[i%REPLICA_COLORS.length]}">&nbsp;</span> ${n}</td><td class="font-mono text-xs text-right">${fl.length}</td><td class="font-mono text-xs text-right">${fmt(disk)}</td><td class="font-mono text-xs text-right">${fmt(mem)}</td><td class="font-mono text-xs text-right">${bkts}</td></tr>`;
+  });
+  html+=`</tbody></table></div></div>`;
+
+  // After table
+  html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3">
+<h3 class="font-bold text-sm mb-2">Proposed Distribution</h3>
+<table class="table table-xs"><thead><tr class="bg-base-200"><th>Node</th><th class="text-right">Indexes</th><th class="text-right">Disk</th><th class="text-right">Memory</th><th class="text-right">Buckets</th></tr></thead><tbody>`;
+  plan.nodeNames.forEach((n,i)=>{
+    const t=plan.nodeTotals[n];
+    const bkts=Object.keys(t.buckets).length;
+    html+=`<tr><td class="font-semibold"><span class="badge badge-xs text-white" style="background:${REPLICA_COLORS[i%REPLICA_COLORS.length]}">&nbsp;</span> ${n}</td><td class="font-mono text-xs text-right">${t.count}</td><td class="font-mono text-xs text-right">${fmt(t.disk)}</td><td class="font-mono text-xs text-right">${fmt(t.mem)}</td><td class="font-mono text-xs text-right">${bkts}</td></tr>`;
+  });
+  html+=`</tbody></table></div></div>`;
+  html+=`</div>`;
+
+  // Before/After bar charts
+  html+=`<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div id="moveit-bar-before" class="chart-half"></div></div></div>
+<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div id="moveit-bar-after" class="chart-half"></div></div></div>
+</div>`;
+
+  // Move plan table
+  if(plan.moves.length){
+    html+=`<div class="card bg-base-100 shadow-sm mb-4"><div class="card-body p-3">
+<h3 class="font-bold text-sm mb-2">Proposed Moves (${plan.moves.length})</h3>
+<details class="mb-2"><summary class="text-xs text-base-content/50 cursor-pointer hover:text-base-content/70">Indexes that would be relocated to achieve better balance. <span class="link link-primary">How does it decide?</span></summary>
+<div class="bg-base-200 rounded-lg p-3 mt-2 text-xs text-base-content/70 space-y-2">
+  <p class="font-semibold text-base-content/80">Greedy Placement Algorithm</p>
+  <p>Indexes are sorted by total disk size (largest first) and placed one-by-one onto the node with the best score. Each node is scored using three penalty factors — <b>lower penalty = better placement</b>:</p>
+  <table class="table table-xs w-auto"><thead><tr class="bg-base-300"><th>Factor</th><th>Penalty Weight</th><th>What It Does</th></tr></thead><tbody>
+    <tr><td class="font-semibold">Disk balance</td><td class="font-mono">1 pt per MB on node</td><td>Penalizes nodes that already have more disk usage</td></tr>
+    <tr><td class="font-semibold">Index count</td><td class="font-mono">50 pts per index</td><td>Penalizes nodes that already have more indexes</td></tr>
+    <tr><td class="font-semibold">Bucket/scope/collection concentration</td><td class="font-mono">200 pts per same-keyspace index</td><td>Penalizes placing another index from the same keyspace on a node that already has many from it</td></tr>
+  </tbody></table>
+  <p><b>Replica separation</b> is a hard constraint — replicas of the same index are <b>never</b> placed on the same node (excluded with <code>-Infinity</code> score).</p>
+  <p>An index only becomes a "move" when the algorithm places it on a <b>different node</b> than where it currently lives.</p>
+</div>
+</details>
+<div class="stats-table-wrap"><table class="table table-xs table-zebra"><thead><tr class="bg-base-200"><th>#</th><th>Index</th><th>Bucket</th><th>Scope.Collection</th><th class="text-right">Disk Size</th><th>From</th><th></th><th>To</th><th>Why</th></tr></thead><tbody>`;
+    plan.moves.forEach((m,i)=>{
+      const reason=[];
+      if(m.disk_size>50*1024*1024)reason.push('Large index — moved for balance');
+      else reason.push('Better size distribution');
+      const fromBktCount=globalStatsFlat.find(n=>n.nodeName===m.fromNode)?.flat.filter(x=>x.bucket===m.bucket).length||0;
+      if(fromBktCount>2)reason.push('Reduces bucket concentration on source');
+      const fromIdx=plan.nodeNames.indexOf(m.fromNode);
+      const toIdx=plan.nodeNames.indexOf(m.toNode);
+      html+=`<tr>
+<td class="font-mono text-xs">${i+1}</td>
+<td class="font-semibold text-xs">${m.name}</td>
+<td class="text-xs">${m.bucket}</td>
+<td class="text-xs">${m.scope}.${m.collection}</td>
+<td class="font-mono text-xs text-right">${fmt(m.disk_size)}</td>
+<td><span class="badge badge-sm text-white" style="background:${REPLICA_COLORS[fromIdx%REPLICA_COLORS.length]}">${m.fromNode}</span></td>
+<td class="text-lg text-base-content/30">→</td>
+<td><span class="badge badge-sm text-white" style="background:${REPLICA_COLORS[toIdx%REPLICA_COLORS.length]}">${m.toNode}</span></td>
+<td class="text-[10px] text-base-content/50">${reason.join('; ')}</td>
+</tr>`;
+    });
+    html+=`</tbody></table></div></div></div>`;
+  } else {
+    html+=`<div class="alert alert-success mb-4"><span>Your indexes are already well-balanced! No moves needed.</span></div>`;
+  }
+
+  // ALTER INDEX statements
+  if(plan.alterStmts.length){
+    html+=`<div class="card bg-base-100 shadow-sm mb-4"><div class="card-body p-3">
+<div class="flex items-center justify-between mb-2">
+  <h3 class="font-bold text-sm">ALTER INDEX Statements (${plan.alterStmts.length})</h3>
+  <div class="flex gap-1">
+  <button class="btn btn-sm btn-ghost" onclick="const p=document.getElementById('moveit-alter-stmts');const d=document.getElementById('moveit-alter-desc');p.classList.toggle('hidden');if(d)d.classList.toggle('hidden');this.textContent=p.classList.contains('hidden')?'▶ Show':'▼ Hide'">▶ Show</button>
+  <button class="btn btn-sm btn-info text-white" onclick="copyMoveItAlter()">Copy All</button>
+  </div>
+</div>
+<p id="moveit-alter-desc" class="text-xs text-base-content/50 mb-2 hidden">Run these statements in Query Workbench or cbq shell to execute the moves. <a href="https://docs.couchbase.com/cloud/n1ql/n1ql-language-reference/alterindex.html" target="_blank" class="link link-info">Docs ↗</a></p>
+<pre id="moveit-alter-stmts" class="bg-base-200 p-3 rounded text-xs font-mono overflow-x-auto whitespace-pre-wrap hidden">${plan.alterStmts.join('\n\n')}</pre>
+</div></div>`;
+  }
+
+  // Plan B: AI rebalance section
+  const initTopo=buildHashedTopology();
+  html+=`<div class="card bg-purple-50 shadow-sm mb-4 border border-purple-200"><div class="card-body p-4">
+<h3 class="font-bold text-sm mb-1">Plan B: Ask an AI to Rebalance</h3>
+<p class="text-xs text-base-content/50 mb-3">Export your index topology → give it to any AI → import the AI's proposed plan back.</p>
+
+<ul class="steps steps-vertical w-full text-xs">
+
+  <li data-content="1" class="step step-primary">
+    <div class="text-left w-full pl-2">
+      <div class="font-bold text-sm mb-1">Configure Export Options</div>
+      <div class="flex items-center gap-4 flex-wrap">
+        <div class="tooltip tooltip-bottom" data-tip="When ON, bucket/scope/collection/index names are hashed for privacy before sending to AI. When OFF, real names are sent — only disable if you trust the AI with your data.">
+          <label class="flex items-center gap-1 cursor-pointer">
+            <input type="checkbox" id="moveit-obfuscate" class="checkbox checkbox-xs checkbox-primary" checked onchange="refreshMoveItJSON()">
+            <span class="text-xs font-semibold">Obfuscated</span>
+          </label>
+        </div>
+        <div class="tooltip tooltip-bottom" data-tip="TOON (Token-Oriented Object Notation) compresses JSON for AI prompts — typically 30-60% fewer tokens. Uses the @toon-format/toon library.">
+          <label class="flex items-center gap-1 cursor-pointer">
+            <input type="checkbox" id="moveit-toon" class="checkbox checkbox-xs checkbox-secondary" checked onchange="refreshMoveItJSON()">
+            <span class="text-xs font-semibold">AI Optimize TOON</span>
+          </label>
+        </div>
+        <span id="moveit-obf-badge" class="badge badge-ghost badge-xs">hashed & anonymized</span>
+      </div>
+    </div>
+  </li>
+
+  <li data-content="2" class="step step-primary">
+    <div class="text-left w-full pl-2">
+      <div class="font-bold text-sm mb-1">Copy & Send to AI</div>
+      <p class="text-xs text-base-content/50 mb-2">Copy the data below and paste it into any AI (ChatGPT, Claude, Gemini, etc.).</p>
+      <div class="flex items-center gap-2 mb-2">
+        <button class="btn btn-sm btn-primary" onclick="copyMoveItJSON()">Copy for AI</button>
+        <span id="moveit-byte-count" class="badge badge-ghost badge-sm font-mono text-[10px]"></span>
+      </div>
+      <details id="moveit-json-details"><summary class="btn btn-xs btn-ghost">▶ Preview exported data</summary>
+      <pre id="moveit-topo-json" class="bg-base-200 p-3 rounded text-[10px] font-mono overflow-x-auto whitespace-pre-wrap mt-2" style="max-height:300px;overflow-y:auto">${escapeHtml(JSON.stringify(initTopo,null,2))}</pre>
+      </details>
+    </div>
+  </li>
+
+  <li data-content="3" class="step">
+    <div class="text-left w-full pl-2">
+      <div class="font-bold text-sm mb-1">Import AI Response</div>
+      <p class="text-xs text-base-content/50 mb-2">Paste the AI's rearranged JSON, upload a file, or drag & drop it below.</p>
+      <textarea id="moveit-ai-input" class="textarea textarea-bordered w-full h-24 font-mono text-xs" placeholder='Paste the AI response JSON here...'></textarea>
+      <div id="moveit-dropzone" class="border-2 border-dashed border-base-300 rounded-lg p-3 text-center text-xs text-base-content/40 cursor-pointer hover:border-purple-400 hover:bg-purple-50 transition-colors mt-2">
+        Or drag & drop / <label class="link link-primary cursor-pointer">select a JSON file<input type="file" id="moveit-file-input" accept=".json,application/json" class="hidden" onchange="handleMoveItFile(this)"></label>
+      </div>
+      <div class="flex items-center gap-2 mt-2">
+        <button class="btn btn-sm btn-primary" onclick="loadAIPlan()">Load AI Plan</button>
+        <span id="moveit-ai-status" class="text-xs self-center"></span>
+      </div>
+    </div>
+  </li>
+
+</ul>
+</div></div>`;
+
+  // Plan B results container
+  html+=`<div id="moveit-planb-results"></div>`;
+
+  // Easter egg gif at bottom
+  html+=`<div class="flex justify-center mt-6 mb-2"><img src="https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExaXR6Z3M5emNpdHIzaXN6cWVvd3g1cGowN3JqMWUzazlhZWkzMW5haiZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/XbgzkpzueQjzepnhLy/giphy.gif" alt="I like to move it move it" class="rounded-lg shadow-md opacity-80 hover:opacity-100 transition-opacity" style="max-height:120px"></div>`;
+
+  c.innerHTML=html;
+
+  // Initialize TOON encoding + byte count (async, updates pre after TOON loads)
+  refreshMoveItJSON();
+
+  // Wire up drag-and-drop
+  const dz=document.getElementById('moveit-dropzone');
+  if(dz){
+    dz.addEventListener('dragover',e=>{e.preventDefault();e.stopPropagation();dz.classList.add('border-purple-500','bg-purple-100')});
+    dz.addEventListener('dragleave',e=>{e.preventDefault();e.stopPropagation();dz.classList.remove('border-purple-500','bg-purple-100')});
+    dz.addEventListener('drop',e=>{
+      e.preventDefault();e.stopPropagation();dz.classList.remove('border-purple-500','bg-purple-100');
+      const file=e.dataTransfer.files[0];
+      if(file)readMoveItFile(file);
+    });
+  }
+
+  // Render before/after bar charts
+  setTimeout(()=>{
+    const beforeDisk=plan.nodeNames.map(n=>{const node=globalStatsFlat.find(x=>x.nodeName===n);return node?node.flat.reduce((s,x)=>s+(x.disk_size||0),0):0});
+    const afterDisk=plan.afterDiskPerNode;
+    const elB=document.getElementById('moveit-bar-before');
+    const elA=document.getElementById('moveit-bar-after');
+    if(elB){const ch=echarts.init(elB);activeCharts.push(ch);ch.setOption({title:{text:'Current: Disk per Node',left:'center',textStyle:{fontSize:12}},tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:p=>p[0]?`<b>${p[0].name}</b><br>${fmt(p[0].value)}`:''}, grid:{left:10,right:20,top:35,bottom:5,containLabel:true},xAxis:{type:'value',axisLabel:{fontSize:10,formatter:fmt}},yAxis:{type:'category',data:plan.nodeNames,axisLabel:{fontSize:9},inverse:true},series:[{type:'bar',data:beforeDisk.map((v,i)=>({value:v,itemStyle:{color:REPLICA_COLORS[i%REPLICA_COLORS.length]}})),barMaxWidth:24}]})}
+    if(elA){const ch=echarts.init(elA);activeCharts.push(ch);ch.setOption({title:{text:'Proposed: Disk per Node',left:'center',textStyle:{fontSize:12}},tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:p=>p[0]?`<b>${p[0].name}</b><br>${fmt(p[0].value)}`:''}, grid:{left:10,right:20,top:35,bottom:5,containLabel:true},xAxis:{type:'value',axisLabel:{fontSize:10,formatter:fmt}},yAxis:{type:'category',data:plan.nodeNames,axisLabel:{fontSize:9},inverse:true},series:[{type:'bar',data:afterDisk.map((v,i)=>({value:v,itemStyle:{color:REPLICA_COLORS[i%REPLICA_COLORS.length]}})),barMaxWidth:24}]})}
+  },100);
+}
+
+function escapeHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+
+function formatAIReasoning(text,nodeNames){
+  let s=escapeHtml(text);
+  // Badge composite hashes (bucket:scope:collection:index) — 4-char base62 or 8-char hex
+  s=s.replace(/(?:&#039;|')?([0-9a-zA-Z]{4}:[0-9a-zA-Z]{4}:[0-9a-zA-Z]{4}:[0-9a-zA-Z]{4}|[0-9a-f]{8}:[0-9a-f]{8}:[0-9a-f]{8}:[0-9a-f]{8})(?:&#039;|')?/g,
+    '<span class="badge badge-xs font-mono bg-base-200 border-base-300 text-base-content/80">$1</span>');
+  // Badge standalone node hashes that match a node name or node hash
+  const nodeSet=new Set(nodeNames||[]);
+  const nodeHashSet=new Set(Object.keys(aiNodeHashLookup||{}));
+  s=s.replace(/\b([0-9a-zA-Z]{4}|[0-9a-f]{8})\b/g,(m,h)=>{
+    if(nodeSet.has(h)||nodeHashSet.has(h)){
+      const real=aiNodeHashLookup[h]||h;
+      const ni=nodeNames?nodeNames.indexOf(real):-1;
+      const c=ni>=0?REPLICA_COLORS[ni%REPLICA_COLORS.length]:'#6b7280';
+      return `<span class="badge badge-xs text-white font-mono" style="background:${c}">${h}</span>`;
+    }
+    return `<code class="text-xs bg-base-200 px-1 rounded">${h}</code>`;
+  });
+  // Bold numbers with units
+  s=s.replace(/(~?\d[\d,.]*\s*(?:MB|GB|KB|bytes|byte|TB))/gi,'<strong>$1</strong>');
+  s=s.replace(/(\d+\s*(?:vs|to)\s*\d+)/gi,'<strong>$1</strong>');
+  s=s.replace(/(\d+\s+(?:indexes|index|moves?|replicas?|nodes?))/gi,'<strong>$1</strong>');
+  // Split into sentences → bullet list
+  const sentences=s.split(/(?<=\.)\s+(?=[A-Z])/);
+  if(sentences.length>1){
+    s='<ul class="list-disc list-inside space-y-1">'+sentences.map(t=>'<li>'+t+'</li>').join('')+'</ul>';
+  }
+  return s;
+}
+
+function copyMoveItAlter(){
+  const el=document.getElementById('moveit-alter-stmts');
+  if(!el)return;
+  navigator.clipboard.writeText(el.textContent).then(()=>{
+    const btn=el.closest('.card-body').querySelector('.btn-info');
+    if(btn){btn.textContent='Copied!';setTimeout(()=>{btn.textContent='Copy All'},2000)}
+  });
+}
+
+async function refreshMoveItJSON(){
+  const obf=document.getElementById('moveit-obfuscate').checked;
+  const useToon=document.getElementById('moveit-toon').checked;
+  const topo=obf?buildHashedTopology():buildPlainTopology();
+  const pre=document.getElementById('moveit-topo-json');
+  const badge=document.getElementById('moveit-obf-badge');
+  const byteEl=document.getElementById('moveit-byte-count');
+
+  let outputStr;
+  let isToon=false;
+  if(useToon){
+    const ok=await loadTOON();
+    if(ok&&toonEncode){
+      try{
+        topo._instructions=topo._instructions_toon;
+        delete topo._instructions_json;delete topo._instructions_toon;
+        outputStr=toonEncode(topo);isToon=true;
+      }catch(e){console.warn('TOON encode failed, falling back',e);outputStr=JSON.stringify(topo)}
+    }
+    if(!isToon){
+      topo._instructions=topo._instructions_json;
+      delete topo._instructions_json;delete topo._instructions_toon;
+      outputStr=JSON.stringify(topo);
+    }
+  }else{
+    topo._instructions=topo._instructions_json;
+    delete topo._instructions_json;delete topo._instructions_toon;
+    outputStr=JSON.stringify(topo,null,2);
+  }
+
+  if(pre)pre.textContent=outputStr;
+  if(badge){
+    const modeBadge=obf?'hashed':'plain text';
+    const fmtBadge=isToon?'TOON':'JSON';
+    badge.textContent=modeBadge+' · '+fmtBadge;
+  }
+  if(byteEl){
+    const bytes=new Blob([outputStr]).size;
+    byteEl.textContent=bytes>=1024?(bytes/1024).toFixed(1)+' KB':bytes+' B';
+  }
+}
+
+function copyMoveItJSON(){
+  const el=document.getElementById('moveit-topo-json');
+  if(!el)return;
+  navigator.clipboard.writeText(el.textContent).then(()=>{
+    const btn=document.querySelector('[onclick="copyMoveItJSON()"]');
+    if(btn){btn.textContent='Copied!';setTimeout(()=>{btn.textContent='Copy JSON for AI'},2000)}
+  });
+}
+
+function handleMoveItFile(input){
+  const file=input.files[0];
+  if(file)readMoveItFile(file);
+  input.value='';
+}
+
+function readMoveItFile(file){
+  if(!file.name.endsWith('.json')&&file.type!=='application/json'){
+    setStatus('moveit-ai-status','Not a JSON file','error');return;
+  }
+  const reader=new FileReader();
+  reader.onload=e=>{
+    document.getElementById('moveit-ai-input').value=e.target.result;
+    setStatus('moveit-ai-status',`Loaded ${file.name} (${(file.size/1024).toFixed(1)} KB)`,'success');
+  };
+  reader.readAsText(file);
+}
+
+function deobfuscateText(text){
+  if(!text||!Object.keys(aiHashLookup).length)return text;
+  let result=text;
+  // Replace full composite hashes first (bucket:scope:collection:index)
+  // Support both old 8-char hex and new 4-char base62 formats
+  const compositeRe=/[0-9a-zA-Z]{4}:[0-9a-zA-Z]{4}:[0-9a-zA-Z]{4}:[0-9a-zA-Z]{4}|[0-9a-f]{8}:[0-9a-f]{8}:[0-9a-f]{8}:[0-9a-f]{8}/g;
+  result=result.replace(compositeRe,match=>{
+    const info=aiHashLookup[match];
+    return info&&info.fullKey?info.fullKey:match;
+  });
+  // Replace individual hashes (4-char base62 or 8-char hex)
+  const singleRe=/\b[0-9a-zA-Z]{4}\b|\b[0-9a-f]{8}\b/g;
+  result=result.replace(singleRe,match=>{
+    const info=aiHashLookup[match];
+    if(info&&info.value)return info.value;
+    const nodeReal=aiNodeHashLookup[match];
+    if(nodeReal)return nodeReal;
+    return match;
+  });
+  return result;
+}
+
+function loadAIPlan(){
+  const raw=document.getElementById('moveit-ai-input').value.trim();
+  if(!raw){setStatus('moveit-ai-status','Paste or upload AI response JSON','error');return}
+  let data;
+  try{data=JSON.parse(raw)}catch(e){setStatus('moveit-ai-status','Invalid JSON: '+e.message,'error');return}
+
+  const obf=document.getElementById('moveit-obfuscate').checked;
+
+  // Accept either {nodes:{...}} or just {nodeHash:[...], ...}
+  const nodesObj=data.nodes||data;
+  if(typeof nodesObj!=='object'){setStatus('moveit-ai-status','Expected object with node keys','error');return}
+
+  // Filter out meta keys
+  const nodeKeys=Object.keys(nodesObj).filter(k=>k!=='_meta'&&k!=='_instructions'&&k!=='_response_schema'&&k!=='description'&&Array.isArray(nodesObj[k]));
+  if(!nodeKeys.length){setStatus('moveit-ai-status','No node arrays found in JSON','error');return}
+
+  // Extract AI description
+  const aiDescription=data.description||nodesObj.description||'';
+
+  // De-hash and build Plan B assignment
+  const planBAssignment={};
+  const planBTotals={};
+  const filteredStats=getFilteredStats();
+  const nodeNames=filteredStats.map(n=>n.nodeName);
+  nodeNames.forEach(n=>{planBAssignment[n]=[];planBTotals[n]={disk:0,mem:0,count:0,buckets:{}}});
+
+  // Build current index lookup by id (hash or plain fullKey depending on mode)
+  const currentById={};
+  filteredStats.forEach(node=>{
+    node.flat.forEach(idx=>{
+      if(obf){
+        const salt=aiHashSalt;
+        const fullHash=fnv1aShort(idx.bucket,salt)+':'+fnv1aShort(idx.scope,salt)+':'+fnv1aShort(idx.collection,salt)+':'+fnv1aShort(idx.name,salt);
+        currentById[fullHash]={...idx,currentNode:node.nodeName};
+      }
+      // Always register by fullKey so plain mode and fallback work
+      currentById[idx.fullKey]={...idx,currentNode:node.nodeName};
+    });
+  });
+
+  let resolved=0,unresolved=0;
+  const moves=[];
+
+  nodeKeys.forEach(nodeKey=>{
+    // Resolve node: could be hash or real name
+    const realNode=aiNodeHashLookup[nodeKey]||nodeKey;
+    if(!nodeNames.includes(realNode)){unresolved++;return}
+    const indexes=nodesObj[nodeKey];
+    indexes.forEach(entry=>{
+      let id;
+      if(typeof entry==='string'){
+        id=entry.split(',')[0];
+      }else{
+        id=entry.id||entry.name||entry.fullHash;
+      }
+      if(!id){unresolved++;return}
+      const real=currentById[id];
+      if(!real){unresolved++;return}
+      resolved++;
+      planBAssignment[realNode].push({...real,toNode:realNode,fromNode:real.currentNode});
+      const t=planBTotals[realNode];
+      t.disk+=(real.disk_size||0);t.mem+=(real.memory_used||0);t.count++;
+      const bk=real.bucket+':'+real.scope+':'+real.collection;
+      t.buckets[bk]=(t.buckets[bk]||0)+1;
+      if(real.currentNode!==realNode){
+        moves.push({...real,toNode:realNode,fromNode:real.currentNode});
+      }
+    });
+  });
+
+  if(!resolved){setStatus('moveit-ai-status','Could not match any indexes. Make sure the AI returned the same IDs.','error');return}
+
+  // Compute Plan B lumpiness score
+  const totalDisk=Object.values(planBTotals).reduce((s,t)=>s+t.disk,0);
+  const totalCount=Object.values(planBTotals).reduce((s,t)=>s+t.count,0);
+  const totalMem=Object.values(planBTotals).reduce((s,t)=>s+t.mem,0);
+  const nc=nodeNames.length;
+  const idealDisk=totalDisk/nc,idealCount=totalCount/nc,idealMem=totalMem/nc;
+  const diskImb=idealDisk>0?nodeNames.reduce((s,n)=>s+Math.abs(planBTotals[n].disk-idealDisk),0)/totalDisk:0;
+  const countImb=idealCount>0?nodeNames.reduce((s,n)=>s+Math.abs(planBTotals[n].count-idealCount),0)/totalCount:0;
+  const memImb=idealMem>0?nodeNames.reduce((s,n)=>s+Math.abs(planBTotals[n].mem-idealMem),0)/totalMem:0;
+  // Replica co-location check
+  const pRepMap={};
+  nodeNames.forEach(n=>{planBAssignment[n].forEach(idx=>{if(!pRepMap[idx.fullKey])pRepMap[idx.fullKey]=[];pRepMap[idx.fullKey].push(n)})});
+  const rks=Object.entries(pRepMap).filter(([,ns])=>ns.length>1);
+  let repImb=0;
+  if(rks.length){let co=0;rks.forEach(([,ns])=>{if(new Set(ns).size<ns.length)co++});repImb=co/rks.length}
+  const rawImb=countImb*0.30+diskImb*0.30+memImb*0.20+repImb*0.20;
+  const planBScore=Math.max(0,Math.min(100,Math.round((1-rawImb)*100)));
+
+  // Generate ALTER INDEX statements for Plan B
+  const alterStmts=[];
+  const movesByIdx={};
+  moves.forEach(m=>{
+    const baseName=m.name.replace(/ \(replica \d+\)$/,'');
+    const ks=m.scope!=='_default'||m.collection!=='_default'?`\`${m.bucket}\`.\`${m.scope}\`.\`${m.collection}\``:`\`${m.bucket}\``;
+    const key=baseName+'||'+ks;
+    if(!movesByIdx[key])movesByIdx[key]={baseName,ks,nodes:new Set()};
+    movesByIdx[key].nodes.add(m.toNode);
+  });
+  for(const[key,info]of Object.entries(movesByIdx)){
+    nodeNames.forEach(n=>{planBAssignment[n].forEach(idx=>{
+      const bn=idx.name.replace(/ \(replica \d+\)$/,'');
+      const iks=idx.scope!=='_default'||idx.collection!=='_default'?`\`${idx.bucket}\`.\`${idx.scope}\`.\`${idx.collection}\``:`\`${idx.bucket}\``;
+      if(bn+'||'+iks===key)info.nodes.add(n);
+    })});
+  }
+  for(const[,info]of Object.entries(movesByIdx)){
+    const nodeList=[...info.nodes].map(n=>`"${n}"`).join(', ');
+    alterStmts.push(`ALTER INDEX \`${info.baseName}\` ON ${info.ks}\nWITH {"action": "move", "nodes": [${nodeList}]};`);
+  }
+
+  const beforeScore=calcLumpinessScore(filteredStats);
+  const bScore=beforeScore?beforeScore.score:0;
+  const delta=planBScore-bScore;
+  const deltaColor=delta>0?'text-success':delta<0?'text-error':'text-base-content/50';
+  const deltaSign=delta>0?'+':'';
+
+  setStatus('moveit-ai-status',`✓ Matched ${resolved} indexes, ${moves.length} moves${unresolved?' ('+unresolved+' unresolved)':''}`,'success');
+
+  // Render Plan B results
+  const displayDesc=obf?deobfuscateText(aiDescription):aiDescription;
+
+  let h=`<div class="card bg-purple-50 shadow-sm mb-4 border border-purple-200"><div class="card-body p-4">
+<h3 class="font-bold text-sm mb-3">Plan B: AI Rebalance Result</h3>`;
+
+  if(displayDesc){
+    h+=`<div class="bg-white/70 rounded-lg p-3 mb-4 border border-purple-100">
+<div class="text-xs font-bold text-purple-700 mb-1">AI Reasoning:</div>
+<div class="text-xs text-base-content/70">${formatAIReasoning(displayDesc,nodeNames)}</div>
+</div>`;
+  }
+
+  h+=`<div class="flex items-center justify-center gap-8 flex-wrap mb-4">
+  <div class="text-center"><div class="text-xs text-base-content/50 mb-1">Current</div>
+    <div class="radial-progress ${bScore>=75?'text-success':bScore>=60?'text-warning':'text-error'} font-bold text-2xl" style="--value:${bScore};--size:6rem;--thickness:6px" role="progressbar">${bScore}</div></div>
+  <div class="text-3xl font-bold text-base-content/30">→</div>
+  <div class="text-center"><div class="text-xs text-base-content/50 mb-1">AI Plan B</div>
+    <div class="radial-progress ${planBScore>=75?'text-success':planBScore>=60?'text-warning':'text-error'} font-bold text-2xl" style="--value:${planBScore};--size:6rem;--thickness:6px" role="progressbar">${planBScore}</div></div>
+  <div class="text-center"><div class="text-xs text-base-content/50 mb-1">Change</div>
+    <div class="text-2xl font-bold font-mono ${deltaColor}">${deltaSign}${delta}</div></div>
+</div>
+
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+<div><h4 class="font-bold text-xs mb-1">Current</h4>
+<table class="table table-xs"><thead><tr class="bg-base-200"><th>Node</th><th class="text-right">Indexes</th><th class="text-right">Disk</th><th class="text-right">Memory</th></tr></thead><tbody>`;
+  nodeNames.forEach((n,i)=>{
+    const node=globalStatsFlat.find(x=>x.nodeName===n);
+    const fl=node?node.flat:[];
+    h+=`<tr><td><span class="badge badge-xs text-white" style="background:${REPLICA_COLORS[i%REPLICA_COLORS.length]}">&nbsp;</span> ${n}</td><td class="font-mono text-xs text-right">${fl.length}</td><td class="font-mono text-xs text-right">${fmt(fl.reduce((s,x)=>s+(x.disk_size||0),0))}</td><td class="font-mono text-xs text-right">${fmt(fl.reduce((s,x)=>s+(x.memory_used||0),0))}</td></tr>`;
+  });
+  h+=`</tbody></table></div>
+<div><h4 class="font-bold text-xs mb-1">AI Plan B</h4>
+<table class="table table-xs"><thead><tr class="bg-base-200"><th>Node</th><th class="text-right">Indexes</th><th class="text-right">Disk</th><th class="text-right">Memory</th></tr></thead><tbody>`;
+  nodeNames.forEach((n,i)=>{
+    const t=planBTotals[n];
+    h+=`<tr><td><span class="badge badge-xs text-white" style="background:${REPLICA_COLORS[i%REPLICA_COLORS.length]}">&nbsp;</span> ${n}</td><td class="font-mono text-xs text-right">${t.count}</td><td class="font-mono text-xs text-right">${fmt(t.disk)}</td><td class="font-mono text-xs text-right">${fmt(t.mem)}</td></tr>`;
+  });
+  h+=`</tbody></table></div></div>`;
+
+  // Moves table
+  if(moves.length){
+    h+=`<h4 class="font-bold text-xs mb-1 mt-2">AI Moves (${moves.length})</h4>
+<div class="stats-table-wrap"><table class="table table-xs table-zebra"><thead><tr class="bg-base-200"><th>#</th><th>Index</th><th>Bucket</th><th class="text-right">Disk</th><th>From</th><th></th><th>To</th></tr></thead><tbody>`;
+    moves.forEach((m,i)=>{
+      const fi=nodeNames.indexOf(m.fromNode),ti=nodeNames.indexOf(m.toNode);
+      h+=`<tr><td class="font-mono text-xs">${i+1}</td><td class="font-semibold text-xs">${m.name}</td><td class="text-xs">${m.bucket}</td><td class="font-mono text-xs text-right">${fmt(m.disk_size)}</td>
+<td><span class="badge badge-sm text-white" style="background:${REPLICA_COLORS[fi%REPLICA_COLORS.length]}">${m.fromNode}</span></td>
+<td class="text-base-content/30">→</td>
+<td><span class="badge badge-sm text-white" style="background:${REPLICA_COLORS[ti%REPLICA_COLORS.length]}">${m.toNode}</span></td></tr>`;
+    });
+    h+=`</tbody></table></div>`;
+  } else {
+    h+=`<div class="alert alert-success mt-2"><span>AI plan matches current distribution — no moves needed.</span></div>`;
+  }
+
+  // ALTER INDEX for Plan B
+  if(alterStmts.length){
+    h+=`<div class="mt-3"><div class="flex items-center justify-between mb-1">
+<h4 class="font-bold text-xs">ALTER INDEX Statements (${alterStmts.length})</h4>
+<div class="flex gap-1">
+<button class="btn btn-xs btn-ghost" onclick="const p=document.getElementById('moveit-planb-alter');p.classList.toggle('hidden');this.textContent=p.classList.contains('hidden')?'▶ Show':'▼ Hide'">▶ Show</button>
+<button class="btn btn-xs btn-info text-white" onclick="copyPlanBAlter()">Copy</button></div></div>
+<pre id="moveit-planb-alter" class="bg-base-200 p-3 rounded text-xs font-mono overflow-x-auto whitespace-pre-wrap hidden">${alterStmts.join('\n\n')}</pre></div>`;
+  }
+
+  h+=`</div></div>`;
+
+  document.getElementById('moveit-planb-results').innerHTML=h;
+}
+
+function copyPlanBAlter(){
+  const el=document.getElementById('moveit-planb-alter');
+  if(!el)return;
+  navigator.clipboard.writeText(el.textContent).then(()=>{
+    const btn=el.closest('div').querySelector('.btn-info');
+    if(btn){btn.textContent='Copied!';setTimeout(()=>{btn.textContent='Copy'},2000)}
+  });
+}
+
+// ===== INDEX STATS DETAIL MODAL =====
+const STAT_TOOLTIPS={
+  disk_size:'Total disk file size consumed by this index (bytes). Includes data, metadata, fragmentation overhead, and internal file structures.',
+  data_size:'The size of indexable data maintained for this index (bytes). This is the actual useful data without overhead — compare with disk_size to see waste.',
+  memory_used:'Amount of RAM currently consumed by this index (bytes). Indexes resident in memory serve scans faster.',
+  items_count:'Number of items (index entries) currently in this index. For array indexes, one document can produce multiple items.',
+  frag_percent:'Percentage of the index disk file that is fragmented (wasted space from updates/deletes). High fragmentation wastes disk and may slow scans. At small sizes (<100 KB), static file overhead inflates this.',
+  resident_percent:'Percentage of index data kept in memory (Enterprise Edition). 100% = fully in RAM for fastest scans. Low values mean disk I/O on every scan.',
+  cache_hit_percent:'Percentage of memory accesses served from the managed cache vs disk (Enterprise Edition). Higher is better — low values mean frequent slow disk reads.',
+  cache_hits:'Number of accesses to this index data that were served from RAM cache. Higher is better.',
+  cache_misses:'Number of accesses to this index data that required reading from disk. Each miss adds latency.',
+  bloat_ratio:'Disk Size ÷ Data Size. 1.0x means no overhead; higher values indicate wasted space from fragmentation, metadata, or internal file padding.',
+  avg_item_size:'Average size of the index keys (bytes). Large keys consume more memory and disk per item.',
+  avg_scan_latency:'Average time to serve one scan request (nanoseconds). Lower is better. High latency often correlates with low cache hit % or high fragmentation.',
+  total_scan_duration:'Total cumulative time spent scanning this index since last indexer startup (nanoseconds). Useful for identifying indexes that consume the most scan CPU time.',
+  scan_bytes_read:'Total bytes of index data read during scans since last startup. High values indicate heavy I/O — consider tighter queries or covered indexes.',
+  num_requests:'Total number of scan requests served by this index since last indexer startup.',
+  num_rows_returned:'Total number of rows returned across all scans since last startup. Compare with num_requests to get avg rows per scan.',
+  num_docs_indexed:'Number of documents indexed by this index since last startup. Reflects the mutation processing workload.',
+  num_docs_pending:'Number of documents waiting to be indexed. Non-zero means the index is behind on mutations and queries may return stale data.',
+  num_docs_queued:'Number of documents queued to be indexed (in the internal queue). Together with pending, shows the total indexing backlog.',
+  num_items_flushed:'Number of items flushed from memory to disk storage. Indicates how much data has been persisted.',
+  num_pending_requests:'Number of scan requests received but not yet served. Non-zero during high load indicates the index is a bottleneck.',
+  num_scan_errors:'Number of scan requests that failed due to errors (not timeouts). Non-zero may indicate data corruption or resource issues.',
+  num_scan_timeouts:'Number of scan requests that timed out waiting for snapshots or during scan execution. High values indicate performance problems.',
+  recs_in_mem:'Number of index records stored in memory (Enterprise Edition, standard storage). For memory-optimized storage, same as items_count.',
+  recs_on_disk:'Number of index records stored on disk (Enterprise Edition, standard storage). For memory-optimized storage, this is 0.',
+  avg_drain_rate:'Average number of items flushed from memory to disk per second. Higher rates during heavy writes are normal.',
+  last_known_scan_time:'Timestamp of the last scan request (Unix nanoseconds). Persisted every 15 minutes. Useful for finding unused indexes.',
+  initial_build_progress:'Percentage of initial index build completed. 100 = fully built and ready. Less than 100 means the index is still building.',
+  avg_array_length:'(Array indexes only) Average number of items indexed per document. High values mean one document generates many index entries.',
+  docid_count:'(Array indexes only) Number of documents currently indexed. Differs from items_count when one document produces multiple array entries.'
+};
+
+function showIndexStats(fullKey,nIdx){
+  // Find the index data
+  let idx=null,nodeName='';
+  for(const node of globalStatsFlat){
+    const found=node.flat.find(x=>x.fullKey===fullKey);
+    if(found){idx=found;nodeName=node.nodeName;break}
+  }
+  if(!idx)return;
+
+  const modal=document.getElementById('index-stats-modal');
+  document.getElementById('index-stats-modal-title').textContent=idx.name;
+  document.getElementById('index-stats-modal-path').innerHTML=`<span class="badge badge-sm badge-ghost">${idx.bucket}</span> → <span class="badge badge-sm badge-ghost">${idx.scope}</span> → <span class="badge badge-sm badge-ghost">${idx.collection}</span> <span class="text-base-content/30 mx-1">|</span> Node: <span class="font-semibold">${nodeName}</span>${idx._replicaTotal>1?' <span class="badge badge-xs badge-info">Replica '+idx._replicaIndex+'/'+idx._replicaTotal+'</span>':''}`;
+
+  // Compute derived metrics
+  const rowsPerReq=idx.num_requests>0?(idx.num_rows_returned/idx.num_requests):0;
+  const bytesPerReq=idx.num_requests>0?(idx.scan_bytes_read/idx.num_requests):0;
+  const avgScanMs=(idx.avg_scan_latency||0)/1e6;
+  const totalBacklog=(idx.num_docs_pending||0)+(idx.num_docs_queued||0);
+  const cacheTotal=(idx.cache_hits||0)+(idx.cache_misses||0);
+  const itemsPerMB=idx.memory_used>0?(idx.items_count/(idx.memory_used/1048576)):0;
+
+  // Efficiency score
+  const cache=idx.cache_hit_percent||0,res=idx.resident_percent!=null?idx.resident_percent:100;
+  const latMs=avgScanMs;
+  const latScore=latMs<=0.1?100:latMs<=1?80:latMs<=10?50:latMs<=100?20:0;
+  const effScore=Math.round(cache*0.35+res*0.35+latScore*0.3);
+  const effGrade=effScore>=90?'A':effScore>=75?'B':effScore>=60?'C':effScore>=40?'D':'F';
+  const effColor=effScore>=90?'text-success':effScore>=75?'text-info':effScore>=60?'text-warning':'text-error';
+
+  function tip(key,label){return`<div class="tooltip tooltip-top cursor-help" data-tip="${STAT_TOOLTIPS[key]||key}"><span class="underline decoration-dotted decoration-base-content/30">${label||key}</span></div>`}
+
+  let h='';
+
+  // Row 1: Big stat cards
+  h+=`<div class="stats stats-horizontal shadow-sm w-full mb-4 flex-wrap">
+<div class="stat py-2 px-3"><div class="stat-title text-[10px]">${tip('','Efficiency Grade')}</div><div class="stat-value text-2xl ${effColor}">${effGrade}</div><div class="stat-desc text-[10px]">Score: ${effScore}/100</div></div>
+<div class="stat py-2 px-3"><div class="stat-title text-[10px]">${tip('disk_size','Disk Size')}</div><div class="stat-value text-lg">${fmt(idx.disk_size)}</div></div>
+<div class="stat py-2 px-3"><div class="stat-title text-[10px]">${tip('data_size','Data Size')}</div><div class="stat-value text-lg">${fmt(idx.data_size)}</div></div>
+<div class="stat py-2 px-3"><div class="stat-title text-[10px]">${tip('memory_used','Memory')}</div><div class="stat-value text-lg">${fmt(idx.memory_used)}</div></div>
+<div class="stat py-2 px-3"><div class="stat-title text-[10px]">${tip('items_count','Items')}</div><div class="stat-value text-lg">${fmtN(idx.items_count)}</div></div>
+<div class="stat py-2 px-3"><div class="stat-title text-[10px]">${tip('num_requests','Requests')}</div><div class="stat-value text-lg">${fmtN(idx.num_requests)}</div></div>
+</div>`;
+
+  // Row 2: Charts grid
+  h+=`<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">`;
+
+  // Chart 1: Storage breakdown (Disk vs Data vs Memory) — horizontal stacked bar
+  h+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><h4 class="font-bold text-xs mb-1">Storage Breakdown</h4><div id="idx-stats-storage" style="height:200px"></div></div></div>`;
+
+  // Chart 2: Gauge cluster — Frag%, Cache%, Resident%, Build Progress
+  h+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><h4 class="font-bold text-xs mb-1">Health Gauges</h4><div id="idx-stats-gauges" style="height:200px"></div></div></div>`;
+
+  // Chart 3: Scan Performance pie — Rows returned vs Scan errors vs Timeouts
+  h+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><h4 class="font-bold text-xs mb-1">Scan Outcomes</h4><div id="idx-stats-scan-pie" style="height:200px"></div></div></div>`;
+
+  // Chart 4: Cache Hits vs Misses
+  h+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><h4 class="font-bold text-xs mb-1">Cache Performance</h4><div id="idx-stats-cache" style="height:200px"></div></div></div>`;
+
+  h+=`</div>`;
+
+  // Row 3: All stats table with tooltips — grouped by category
+  const groups=[
+    {title:'Storage & Size',stats:[
+      {key:'disk_size',label:'Disk Size',val:fmt(idx.disk_size),badge:null},
+      {key:'data_size',label:'Data Size',val:fmt(idx.data_size),badge:null},
+      {key:'memory_used',label:'Memory Used',val:fmt(idx.memory_used),badge:null},
+      {key:'bloat_ratio',label:'Bloat Ratio',val:idx.bloat_ratio?idx.bloat_ratio.toFixed(2)+'x':'—',badge:bloatBadge(idx.bloat_ratio)},
+      {key:'frag_percent',label:'Fragmentation',val:idx.frag_percent+'%',badge:fragBadge(idx.frag_percent)},
+      {key:'items_count',label:'Items Count',val:fmtN(idx.items_count),badge:null},
+      {key:'avg_item_size',label:'Avg Item Size',val:fmt(idx.avg_item_size),badge:null},
+      {key:'recs_in_mem',label:'Records in Memory',val:fmtN(idx.recs_in_mem),badge:null},
+      {key:'recs_on_disk',label:'Records on Disk',val:fmtN(idx.recs_on_disk),badge:null},
+    ]},
+    {title:'Cache & Residency',stats:[
+      {key:'resident_percent',label:'Resident %',val:idx.resident_percent!=null?idx.resident_percent+'%':'—',badge:resBadge(idx.resident_percent)},
+      {key:'cache_hit_percent',label:'Cache Hit %',val:idx.cache_hit_percent+'%',badge:cacheBadge(idx.cache_hit_percent)},
+      {key:'cache_hits',label:'Cache Hits',val:fmtN(idx.cache_hits),badge:null},
+      {key:'cache_misses',label:'Cache Misses',val:fmtN(idx.cache_misses),badge:null},
+    ]},
+    {title:'Scan Performance',stats:[
+      {key:'avg_scan_latency',label:'Avg Scan Latency',val:fmtNs(idx.avg_scan_latency),badge:latencyBadge(idx.avg_scan_latency)},
+      {key:'total_scan_duration',label:'Total Scan Duration',val:fmtNs(idx.total_scan_duration),badge:null},
+      {key:'scan_bytes_read',label:'Scan Bytes Read',val:fmt(idx.scan_bytes_read),badge:null},
+      {key:'num_requests',label:'Total Requests',val:fmtN(idx.num_requests),badge:null},
+      {key:'num_rows_returned',label:'Rows Returned',val:fmtN(idx.num_rows_returned),badge:null},
+      {key:'num_scan_errors',label:'Scan Errors',val:fmtN(idx.num_scan_errors),badge:idx.num_scan_errors>0?pendingBadge(idx.num_scan_errors):null},
+      {key:'num_scan_timeouts',label:'Scan Timeouts',val:fmtN(idx.num_scan_timeouts),badge:idx.num_scan_timeouts>0?pendingBadge(idx.num_scan_timeouts):null},
+      {key:'num_pending_requests',label:'Pending Requests',val:fmtN(idx.num_pending_requests),badge:idx.num_pending_requests>0?pendingBadge(idx.num_pending_requests):null},
+    ]},
+    {title:'Derived Metrics',stats:[
+      {key:'',label:'Rows / Request',val:rowsPerReq.toFixed(1),badge:null,tip:'Average number of rows returned per scan request. High values may indicate broad scans or missing WHERE clauses.'},
+      {key:'',label:'Bytes / Request',val:fmt(Math.round(bytesPerReq)),badge:null,tip:'Average bytes of index data read per scan request. High values mean each query reads a lot of data.'},
+      {key:'',label:'Items / MB RAM',val:fmtN(Math.round(itemsPerMB)),badge:null,tip:'Number of indexed items per megabyte of RAM used. Lower values indicate less memory-efficient indexes (wide keys, arrays, overhead).'},
+    ]},
+    {title:'Indexing & Mutation',stats:[
+      {key:'num_docs_indexed',label:'Docs Indexed',val:fmtN(idx.num_docs_indexed),badge:null},
+      {key:'num_docs_pending',label:'Docs Pending',val:fmtN(idx.num_docs_pending),badge:pendingBadge(idx.num_docs_pending)},
+      {key:'num_docs_queued',label:'Docs Queued',val:fmtN(idx.num_docs_queued),badge:pendingBadge(idx.num_docs_queued)},
+      {key:'num_items_flushed',label:'Items Flushed',val:fmtN(idx.num_items_flushed),badge:null},
+      {key:'avg_drain_rate',label:'Avg Drain Rate',val:fmtN(idx.avg_drain_rate)+'/s',badge:null},
+      {key:'initial_build_progress',label:'Build Progress',val:idx.initial_build_progress+'%',badge:idx.initial_build_progress<100?`<span class="badge badge-warning badge-xs">${idx.initial_build_progress}%</span>`:null},
+    ]},
+    {title:'Timestamps & Activity',stats:[
+      {key:'last_known_scan_time',label:'Last Scan Time',val:fmtScanTime(idx.last_known_scan_time).replace(/<[^>]*>/g,''),badge:null},
+    ]},
+  ];
+
+  // Add array index stats if relevant
+  if(idx.avg_array_length>0||idx.docid_count>0){
+    groups.push({title:'Array Index',stats:[
+      {key:'avg_array_length',label:'Avg Array Length',val:fmtN(idx.avg_array_length),badge:null},
+      {key:'docid_count',label:'Document Count',val:fmtN(idx.docid_count),badge:null},
+    ]});
+  }
+
+  h+=`<div class="space-y-3">`;
+  groups.forEach(g=>{
+    h+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3">
+<h4 class="font-bold text-xs mb-2">${g.title}</h4>
+<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">`;
+    g.stats.forEach(s=>{
+      const tipText=s.tip||STAT_TOOLTIPS[s.key]||s.label;
+      h+=`<div class="tooltip tooltip-top cursor-help" data-tip="${tipText.replace(/"/g,'&quot;')}">
+<div class="bg-base-200 rounded-lg px-3 py-2">
+  <div class="text-[10px] text-base-content/50 underline decoration-dotted decoration-base-content/20 mb-0.5">${s.label}</div>
+  <div class="font-mono font-bold text-sm">${s.val}${s.badge?' '+s.badge:''}</div>
+</div></div>`;
+    });
+    h+=`</div></div></div>`;
+  });
+  h+=`</div>`;
+
+  document.getElementById('index-stats-modal-body').innerHTML=h;
+  modal.showModal();
+
+  // Render charts after DOM is ready
+  setTimeout(()=>{
+    // Dispose any previous modal charts
+    ['idx-stats-storage','idx-stats-gauges','idx-stats-scan-pie','idx-stats-cache'].forEach(id=>{
+      const el=document.getElementById(id);
+      if(el){const ex=echarts.getInstanceByDom(el);if(ex)ex.dispose()}
+    });
+
+    // 1. Storage breakdown bar
+    const storEl=document.getElementById('idx-stats-storage');
+    if(storEl){
+      const ch=echarts.init(storEl);
+      const overhead=Math.max(0,(idx.disk_size||0)-(idx.data_size||0));
+      ch.setOption({
+        tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:function(p){
+          let h='';p.forEach(x=>{h+=x.marker+' '+x.seriesName+': '+fmt(x.value)+'<br>'});return h;
+        }},
+        legend:{data:['Data','Disk Overhead','Memory'],bottom:0,textStyle:{fontSize:9}},
+        grid:{left:10,right:10,top:10,bottom:30,containLabel:true},
+        xAxis:{type:'value',axisLabel:{fontSize:9,formatter:fmt}},
+        yAxis:{type:'category',data:[''],axisLabel:{show:false}},
+        series:[
+          {name:'Data',type:'bar',stack:'storage',data:[idx.data_size||0],itemStyle:{color:'#22c55e'},barWidth:30},
+          {name:'Disk Overhead',type:'bar',stack:'storage',data:[overhead],itemStyle:{color:'#ef4444'},barWidth:30},
+          {name:'Memory',type:'bar',data:[idx.memory_used||0],itemStyle:{color:'#3b82f6'},barWidth:30}
+        ]
+      });
+    }
+
+    // 2. Health gauges (4 mini gauges)
+    const gaugeEl=document.getElementById('idx-stats-gauges');
+    if(gaugeEl){
+      const ch=echarts.init(gaugeEl);
+      const gaugeTemplate=(cx,cy,val,title,color)=>({
+        type:'gauge',center:[cx,cy],radius:'38%',startAngle:200,endAngle:-20,min:0,max:100,
+        progress:{show:true,width:10,itemStyle:{color}},
+        axisLine:{lineStyle:{width:10,color:[[1,'#e5e7eb']]}},
+        axisTick:{show:false},splitLine:{show:false},axisLabel:{show:false},pointer:{show:false},
+        title:{offsetCenter:[0,'55%'],fontSize:9,color:'#666'},
+        detail:{valueAnimation:true,offsetCenter:[0,'-5%'],fontSize:16,fontWeight:'bold',formatter:'{value}%',color:'#333'},
+        data:[{value:val,name:title}]
+      });
+      const fp=idx.frag_percent||0, cp=idx.cache_hit_percent||0;
+      const rp=idx.resident_percent!=null?idx.resident_percent:100;
+      const bp=idx.initial_build_progress!=null?idx.initial_build_progress:100;
+      ch.setOption({series:[
+        gaugeTemplate('15%','50%',100-fp,'Low Frag',fp>70?'#ef4444':fp>30?'#f59e0b':'#22c55e'),
+        gaugeTemplate('40%','50%',cp,'Cache Hit',cp<60?'#ef4444':cp<90?'#f59e0b':'#22c55e'),
+        gaugeTemplate('65%','50%',rp,'Resident',rp<40?'#ef4444':rp<80?'#f59e0b':'#22c55e'),
+        gaugeTemplate('90%','50%',bp,'Build',bp<100?'#f59e0b':'#22c55e')
+      ]});
+    }
+
+    // 3. Scan outcomes pie
+    const scanEl=document.getElementById('idx-stats-scan-pie');
+    if(scanEl){
+      const ch=echarts.init(scanEl);
+      const successReqs=Math.max(0,(idx.num_requests||0)-(idx.num_scan_errors||0)-(idx.num_scan_timeouts||0));
+      const data=[
+        {name:'Successful',value:successReqs,itemStyle:{color:'#22c55e'}},
+        {name:'Errors',value:idx.num_scan_errors||0,itemStyle:{color:'#ef4444'}},
+        {name:'Timeouts',value:idx.num_scan_timeouts||0,itemStyle:{color:'#f59e0b'}}
+      ].filter(d=>d.value>0);
+      if(data.length===0)data.push({name:'No Scans',value:1,itemStyle:{color:'#e5e7eb'}});
+      ch.setOption({
+        tooltip:{trigger:'item',formatter:'{b}: {c} ({d}%)'},
+        series:[{type:'pie',radius:['30%','65%'],center:['50%','50%'],
+          itemStyle:{borderRadius:3,borderColor:'#fff',borderWidth:2},
+          label:{show:true,formatter:'{b}\n{c}',fontSize:9},data}]
+      });
+    }
+
+    // 4. Cache hits vs misses
+    const cacheEl=document.getElementById('idx-stats-cache');
+    if(cacheEl){
+      const ch=echarts.init(cacheEl);
+      if(cacheTotal>0){
+        ch.setOption({
+          tooltip:{trigger:'item',formatter:'{b}: {c} ({d}%)'},
+          series:[{type:'pie',radius:['30%','65%'],center:['50%','50%'],
+            itemStyle:{borderRadius:3,borderColor:'#fff',borderWidth:2},
+            label:{show:true,formatter:function(p){return p.name+'\n'+fmtCompact(p.value)},fontSize:9},
+            data:[
+              {name:'Cache Hits',value:idx.cache_hits,itemStyle:{color:'#22c55e'}},
+              {name:'Cache Misses',value:idx.cache_misses,itemStyle:{color:'#ef4444'}}
+            ]}]
+        });
+      } else {
+        cacheEl.innerHTML='<div class="flex items-center justify-center h-full text-base-content/30 text-sm">No cache data</div>';
+      }
+    }
+  },50);
+}
 </script>
 </body>
 </html>

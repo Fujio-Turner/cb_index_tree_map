@@ -1,5 +1,49 @@
 # Release Notes
 
+## v2.0.0 (2026-03-08)
+
+### New Features
+
+- **💃 Index Placement Optimizer tab** ([issue #17](https://github.com/Fujio-Turner/cb_index_tree_map/issues/17)) — A full index rebalance planner for Couchbase GSI indexes, available when Stats API data is loaded with at least 2 nodes.
+
+  - **Plan A: Built-in Rebalance** — An automatic greedy placement algorithm that computes an optimized distribution of indexes across nodes. Indexes are sorted by total disk size (largest first) and placed one-by-one using a scoring function that penalizes disk imbalance, index count imbalance, and bucket/scope/collection concentration. Replica separation is enforced as a hard constraint.
+  - **Plan B: AI-Assisted Rebalance** — A 3-step workflow to export your index topology, send it to any AI (ChatGPT, Claude, Gemini, etc.), and import the AI's proposed arrangement back:
+    - **Obfuscated mode** (default ON) — All identifying names are replaced with 4-character base62 hashes (FNV-1a) for privacy before sending to the AI.
+    - **AI Optimize TOON** (default ON) — Output encoded using [TOON (Token-Oriented Object Notation)](https://toonformat.dev/) for 30–60% fewer tokens vs JSON. Library loaded dynamically from CDN (`@toon-format/toon@2.1.0`).
+    - **AI Response import** — Paste, file upload, or drag & drop the AI's JSON response. The tool de-hashes names, computes a Lumpiness Score, and generates ALTER INDEX statements.
+    - **AI Reasoning display** — The AI's explanation is auto-formatted with bulleted lists, color-coded node badges, bold metrics, and de-obfuscated names.
+  - **Lumpiness Score: Before → After** — Radial gauge comparison of current vs proposed distribution scores.
+  - **Current vs Proposed Distribution** — Side-by-side per-node tables and bar charts showing index count, disk, memory, and bucket count.
+  - **Proposed Moves table** — Lists every index that would move, with source → destination nodes, disk size, and reasoning.
+  - **ALTER INDEX Statements** — Ready-to-run N1QL `ALTER INDEX ... WITH {"action": "move", ...}` statements with copy button and collapsible toggle.
+
+- **🔍 Index Stats Detail Modal** ([issue #22](https://github.com/Fujio-Turner/cb_index_tree_map/issues/22)) — Click the "Stats" button on any index row in the Stats API tab to open a comprehensive detail modal:
+  - **Efficiency Grade** (A–F) with score out of 100 (35% cache hit + 35% residency + 30% latency).
+  - **Storage Breakdown** — Horizontal stacked bar showing Data vs Disk Overhead vs Memory.
+  - **Health Gauges** — Four radial gauges for Fragmentation, Cache Hit %, Resident %, and Build Progress.
+  - **Scan Outcomes** — Pie chart of Successful vs Errors vs Timeouts.
+  - **Cache Performance** — Pie chart of Cache Hits vs Misses.
+  - **Full stats table** grouped by category (Storage & Size, Cache & Residency, Scan Performance, Derived Metrics, Indexing & Mutation, Timestamps, Array Index) with tooltips on every metric.
+
+- **#23 — Node filter for multi-node selection** ([issue](https://github.com/Fujio-Turner/cb_index_tree_map/issues/23)) — Replaced the single-select node dropdown with a multi-select checkbox dropdown, allowing filtering by one or more index nodes simultaneously.
+
+- **#24 — Scan filter for never-scanned indexes** ([issue](https://github.com/Fujio-Turner/cb_index_tree_map/issues/24)) — Added a scan history filter dropdown with three options: All, Exclude Never Scanned, and Only Never Scanned. Filters apply across all tabs.
+
+### UX Improvements
+
+- **Byte count badge** on the Plan B export shows exact payload size, updated in real-time when toggling Obfuscated or TOON modes.
+- **Format-aware AI instructions** — `_instructions` field adapts based on TOON vs JSON output format.
+- **Stat badges with color-coded thresholds** — Bloat, fragmentation, cache hit %, residency, latency, and pending docs all display color-coded badges (green/yellow/red) in the detail modal.
+- **Easter egg** — An animated GIF at the bottom of the Index Placement Optimizer tab. 🕺
+- Updated version badge to v2.0.0.
+
+### Stats
+
+- **Files changed:** 2 (`index.html`, `docs/move-it-move-it.md`)
+- **Lines:** +1234 / −71
+
+---
+
 ## v1.3.0 (2026-03-07)
 
 ### Issues Fixed
