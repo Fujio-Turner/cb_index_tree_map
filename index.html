@@ -505,7 +505,7 @@ function makeSystemTable(filtered){
 function renderTreemapView(){const c=document.getElementById('treemap-content');c.innerHTML='';activeCharts=activeCharts.filter(ch=>{try{ch.dispose()}catch{}return false});chartIndexMaps=[];if(!globalSystemFlat.length){c.innerHTML='<div class="text-center py-12 text-base-content/40">No data loaded</div>';return}const f=getFilters();let filtered=globalSystemFlat.filter(i=>matchFilter(i,f));if(f.uniqueOnly)filtered=dedup(filtered);if(!filtered.length){c.innerHTML='<div class="alert alert-warning"><span>No indexes match current filters</span></div>';return}
 // Build chart HTML: 4 charts in a 2x2 grid, then the table
 c.innerHTML=`<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><h3 class="font-bold text-sm mb-2">Most Commonly Indexed Fields</h3><div id="wc-box-sys" class="abox"></div></div></div>
+<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center justify-between mb-2"><h3 class="font-bold text-sm">Most Commonly Indexed Fields</h3><div class="join"><button class="btn btn-xs join-item btn-active" id="wc-cloud-btn" onclick="switchWcMode('cloud')">Word Cloud</button><button class="btn btn-xs join-item" id="wc-pie-btn" onclick="switchWcMode('pie')">Pie</button></div></div><div id="wc-box-sys" class="abox"></div></div></div>
 <div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div id="bar-last-scan" class="abox"></div></div></div>
 <div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div id="pie-where" class="abox"></div></div></div>
 <div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center justify-between mb-1"><h3 class="font-bold text-sm">Index Count by Bucket</h3><div class="join"><button class="btn btn-xs join-item" id="idx-count-pie-btn" onclick="switchIdxCountMode('pie')">Pie</button><button class="btn btn-xs join-item btn-active" id="idx-count-bar-btn" onclick="switchIdxCountMode('bar')">Bar</button></div></div><div id="bar-bucket-scope-stacked" class="chart-box"></div></div></div>
@@ -513,8 +513,10 @@ c.innerHTML=`<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
 setTimeout(()=>{renderSystemCharts(filtered)},50)}
 
 function renderSystemCharts(filtered){
-  // 1. Word cloud: most commonly indexed fields
-  renderWordCloud(filtered,'wc-box-sys');
+  // 1. Word cloud / pie: most commonly indexed fields
+  wcFilteredCache=filtered;
+  if(wcMode==='pie')renderFieldPie(filtered,'wc-box-sys');
+  else renderWordCloud(filtered,'wc-box-sys');
 
   // 2. Bar: days since last scan — filtered by global filters, bucketed into ranges
   const f=getFilters();
@@ -969,7 +971,24 @@ function switchItemDistMode(mode){
   if(itemDistStatsF)renderItemDistChart(itemDistStatsF,mode);
 }
 
-function renderWordCloud(sysData,targetId){const el=document.getElementById(targetId||'wc-box');if(!el)return;const fc={};sysData.forEach(idx=>{(idx.keys||[]).forEach(rk=>{let field=rk.replace(/`/g,'').trim();const ms=field.match(/[a-zA-Z_][a-zA-Z0-9_]*/g);if(ms)ms.forEach(m=>{const skip=['all','array','for','in','end','meta','id','xattrs','op','name','val','least','ifmissing','object_pairs','null','desc','asc','include','missing','type'];if(!skip.includes(m.toLowerCase())&&m.length>1)fc[m]=(fc[m]||0)+1})})});const words=Object.entries(fc).map(([n,c])=>({name:n,value:c})).sort((a,b)=>b.value-a.value);if(!words.length){el.innerHTML='<div class="flex items-center justify-center h-full text-base-content/30">No indexed fields found</div>';return}const ch=echarts.init(el);activeCharts.push(ch);ch.setOption({tooltip:{formatter:p=>`<b>${p.name}</b><br>Used in ${p.value} index${p.value>1?'es':''}`},series:[{type:'wordCloud',shape:'circle',left:'center',top:'center',width:'90%',height:'85%',sizeRange:[16,68],rotationRange:[-30,30],rotationStep:15,gridSize:8,drawOutOfBound:false,textStyle:{fontFamily:'sans-serif',fontWeight:'bold',color:()=>['#c0392b','#e67e22','#2980b9','#27ae60','#8e44ad','#d35400','#16a085','#2c3e50','#f39c12','#7f8c8d'][Math.floor(Math.random()*10)]},emphasis:{textStyle:{shadowBlur:10,shadowColor:'rgba(0,0,0,.2)'}},data:words}]})}
+const WC_COLORS=['#c0392b','#e67e22','#2980b9','#27ae60','#8e44ad','#d35400','#16a085','#2c3e50','#f39c12','#7f8c8d'];
+let wcMode='cloud',wcFilteredCache=null;
+
+function getFieldCounts(sysData){const fc={};sysData.forEach(idx=>{(idx.keys||[]).forEach(rk=>{let field=rk.replace(/`/g,'').trim();const ms=field.match(/[a-zA-Z_][a-zA-Z0-9_]*/g);if(ms)ms.forEach(m=>{const skip=['all','array','for','in','end','meta','id','xattrs','op','name','val','least','ifmissing','object_pairs','null','desc','asc','include','missing','type'];if(!skip.includes(m.toLowerCase())&&m.length>1)fc[m]=(fc[m]||0)+1})})});return Object.entries(fc).map(([n,c])=>({name:n,value:c})).sort((a,b)=>b.value-a.value)}
+
+function renderWordCloud(sysData,targetId){const el=document.getElementById(targetId||'wc-box');if(!el)return;const words=getFieldCounts(sysData);if(!words.length){el.innerHTML='<div class="flex items-center justify-center h-full text-base-content/30">No indexed fields found</div>';return}const ch=echarts.init(el);activeCharts.push(ch);ch.setOption({tooltip:{formatter:p=>`<b>${p.name}</b><br>Used in ${p.value} index${p.value>1?'es':''}`},series:[{type:'wordCloud',shape:'circle',left:'center',top:'center',width:'90%',height:'85%',sizeRange:[16,68],rotationRange:[-30,30],rotationStep:15,gridSize:8,drawOutOfBound:false,textStyle:{fontFamily:'sans-serif',fontWeight:'bold',color:()=>WC_COLORS[Math.floor(Math.random()*WC_COLORS.length)]},emphasis:{textStyle:{shadowBlur:10,shadowColor:'rgba(0,0,0,.2)'}},data:words}]})}
+
+function renderFieldPie(sysData,targetId){const el=document.getElementById(targetId||'wc-box');if(!el)return;const words=getFieldCounts(sysData);if(!words.length){el.innerHTML='<div class="flex items-center justify-center h-full text-base-content/30">No indexed fields found</div>';return}const ch=echarts.init(el);activeCharts.push(ch);ch.setOption({tooltip:{trigger:'item',formatter:function(p){return'<b>'+p.name+'</b><br>Used in '+p.value+' index'+(p.value>1?'es':'')+' ('+p.percent+'%)'}},series:[{type:'pie',radius:['30%','70%'],center:['50%','50%'],itemStyle:{borderRadius:4,borderColor:'#fff',borderWidth:2},label:{show:true,formatter:function(p){return p.name+': '+p.value},fontSize:9},data:words.map((w,i)=>({name:w.name,value:w.value,itemStyle:{color:WC_COLORS[i%WC_COLORS.length]}}))}]})}
+
+function switchWcMode(mode){
+  wcMode=mode;
+  document.getElementById('wc-cloud-btn').classList.toggle('btn-active',mode==='cloud');
+  document.getElementById('wc-pie-btn').classList.toggle('btn-active',mode==='pie');
+  const el=document.getElementById('wc-box-sys');if(!el||!wcFilteredCache)return;
+  const existing=echarts.getInstanceByDom(el);if(existing){activeCharts=activeCharts.filter(c=>c!==existing);existing.dispose()}
+  if(mode==='pie')renderFieldPie(wcFilteredCache,'wc-box-sys');
+  else renderWordCloud(wcFilteredCache,'wc-box-sys');
+}
 
 window.addEventListener('resize',()=>activeCharts.forEach(c=>c.resize()));
 
