@@ -23,12 +23,12 @@
 <!-- Navbar -->
 <div class="navbar bg-base-100 shadow-sm px-6">
   <div class="flex-1 gap-3">
-    <span class="text-xl font-bold text-error">🗺️ CB Index Treemap</span>
+    <span class="text-xl font-bold text-error">CB Index Treemap</span>
     <span class="text-xs text-base-content/50 hidden sm:inline">Visualize & analyze GSI index sizes, performance & capacity</span>
     <span class="badge badge-ghost badge-sm text-[10px]">v2.0.0</span>
   </div>
   <div class="flex-none">
-    <button class="btn btn-ghost btn-sm gap-1" onclick="openFileManager()">💾 <span id="saved-count" class="badge badge-sm badge-ghost">0</span></button>
+    <button class="btn btn-ghost btn-sm gap-1" onclick="openFileManager()"><span id="saved-count" class="badge badge-sm badge-ghost">0</span></button>
   </div>
 </div>
 
@@ -58,10 +58,10 @@
 
 <!-- Main Tabs -->
 <div role="tablist" class="tabs tabs-lifted bg-base-100 px-6">
-  <a role="tab" class="tab tab-active [--tab-bg:#fef2f2] [--tab-border-color:#ef4444] text-error font-semibold" onclick="switchMain('treemap',this)">📊 System Indexes</a>
-  <a role="tab" class="tab [--tab-bg:#eff6ff] [--tab-border-color:#3b82f6] text-blue-600 font-semibold" onclick="switchMain('stats',this)">📈 Stats API</a>
-  <a role="tab" class="tab [--tab-bg:#f0fdf4] [--tab-border-color:#22c55e] text-green-600 font-semibold" onclick="switchMain('analysis',this)">🔍 Analysis</a>
-  <a role="tab" class="tab [--tab-bg:#fdf4ff] [--tab-border-color:#a855f7] text-purple-600 font-semibold" onclick="switchMain('moveit',this)">💃 Index Placement Optimizer <span class="badge badge-info badge-xs text-white ml-1">Beta</span></a>
+  <a role="tab" class="tab tab-active [--tab-bg:#fef2f2] [--tab-border-color:#ef4444] text-error font-semibold" onclick="switchMain('treemap',this)">System Indexes</a>
+  <a role="tab" class="tab [--tab-bg:#eff6ff] [--tab-border-color:#3b82f6] text-blue-600 font-semibold" onclick="switchMain('stats',this)">Stats API</a>
+  <a role="tab" class="tab [--tab-bg:#f0fdf4] [--tab-border-color:#22c55e] text-green-600 font-semibold" onclick="switchMain('analysis',this)">Analysis</a>
+  <a role="tab" class="tab [--tab-bg:#fdf4ff] [--tab-border-color:#a855f7] text-purple-600 font-semibold" onclick="switchMain('moveit',this)">Index Placement Optimizer <span class="badge badge-info badge-xs text-white ml-1">Beta</span></a>
 </div>
 
 <!-- TAB 1: System Indexes -->
@@ -73,7 +73,7 @@
       <p id="system-json-hint" class="text-xs text-base-content/40">Index structure only (no sizes). Combine with Stats API for full analysis.</p>
       <div class="flex gap-2 items-center flex-wrap">
         <button class="btn btn-error btn-sm" onclick="loadSystemData()">Load & Render</button>
-        <button class="btn btn-sm btn-outline btn-success" onclick="saveSystemToServer()">💾 Save</button>
+        <button class="btn btn-sm btn-outline btn-success" onclick="saveSystemToServer()">Save</button>
         <span id="system-status" class="text-xs"></span>
       </div>
     </div>
@@ -110,7 +110,7 @@
       </div>
       <div class="flex gap-2 items-center flex-wrap mt-2">
         <button class="btn btn-error btn-sm" onclick="loadStatsData()">Load & Render</button>
-        <button class="btn btn-sm btn-outline btn-success" onclick="saveStatsToServer()">💾 Save All Nodes</button>
+        <button class="btn btn-sm btn-outline btn-success" onclick="saveStatsToServer()">Save All Nodes</button>
         <span id="stats-status" class="text-xs"></span>
         <div class="join ml-auto">
           <button class="btn btn-xs join-item btn-active" data-metric="disk_size" onclick="switchMetric(this)" title="Size charts by on-disk bytes (includes fragmentation and overhead)">Disk Size</button>
@@ -139,7 +139,7 @@
 <!-- Insight Detail Modal -->
 <dialog id="insight-modal" class="modal">
   <div class="modal-box max-w-3xl max-h-[85vh]">
-    <form method="dialog"><button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button></form>
+    <form method="dialog"><button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">x</button></form>
     <h3 id="insight-modal-title" class="font-bold text-lg mb-1"></h3>
     <p id="insight-modal-desc" class="text-xs text-base-content/50 mb-3"></p>
     <div id="insight-modal-body" class="overflow-y-auto max-h-[65vh]"></div>
@@ -150,13 +150,13 @@
 <!-- File Manager Modal -->
 <dialog id="file-modal" class="modal">
   <div class="modal-box max-w-lg">
-    <form method="dialog"><button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button></form>
-    <h3 class="font-bold text-lg mb-3">💾 Saved Files</h3>
+    <form method="dialog"><button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">x</button></form>
+    <h3 class="font-bold text-lg mb-3">Saved Files</h3>
     <p class="text-xs text-base-content/50 mb-3">Data persists across container restarts via Docker volume.</p>
     <div id="file-list" class="space-y-2 mb-4"></div>
     <div class="flex gap-2">
-      <button class="btn btn-error btn-sm" onclick="deleteAllFiles()">🗑️ Delete All</button>
-      <button class="btn btn-ghost btn-sm" onclick="refreshFileList()">🔄 Refresh</button>
+      <button class="btn btn-error btn-sm" onclick="deleteAllFiles()">Delete All</button>
+      <button class="btn btn-ghost btn-sm" onclick="refreshFileList()">Refresh</button>
     </div>
   </div>
   <form method="dialog" class="modal-backdrop"><button>close</button></form>
@@ -300,7 +300,7 @@ function cascadeFilters(){
 function resetFilters(){['f-bucket','f-scope','f-collection','f-index'].forEach(id=>document.getElementById(id).value='');document.getElementById('f-unique').checked=false;const allCb=document.getElementById('f-node-all');if(allCb){allCb.checked=true;toggleAllNodes(allCb)}applyFilters()}
 function applyFilters(){cascadeFilters();renderTreemapView();renderStatsView();if(!document.getElementById('panel-analysis').classList.contains('hidden'))renderAnalysis();const f=getFilters();let a=[f.bucket,f.scope,f.collection,f.index].filter(Boolean).length;if(f.nodes.length)a++;if(f.uniqueOnly)a++;document.getElementById('filter-count').textContent=a?`(${a} active)`:''}
 
-function addStatsNode(){statsNodeCount++;const c=document.getElementById('stats-nodes'),d=document.createElement('div');d.className='stats-node-input mb-2';const bg=REPLICA_COLORS[(statsNodeCount-1)%REPLICA_COLORS.length];d.innerHTML=`<div class="flex items-center gap-2 mb-1"><span class="badge badge-sm text-white font-bold" style="background:${bg};border-color:${bg}">Node ${statsNodeCount}:</span><input type="text" class="input input-bordered input-xs w-48 node-name" value="Index Node ${statsNodeCount}"><button class="btn btn-ghost btn-xs text-base-content/50 node-toggle" onclick="toggleNodeTextarea(this)" title="Show/hide JSON">▼</button><button class="btn btn-ghost btn-xs text-error" onclick="this.closest('.stats-node-input').remove()">✕</button></div><textarea class="textarea textarea-bordered w-full h-24 font-mono text-xs node-stats-json" placeholder='Paste stats JSON...'></textarea>`;c.appendChild(d);updateNodeLabels()}
+function addStatsNode(){statsNodeCount++;const c=document.getElementById('stats-nodes'),d=document.createElement('div');d.className='stats-node-input mb-2';const bg=REPLICA_COLORS[(statsNodeCount-1)%REPLICA_COLORS.length];d.innerHTML=`<div class="flex items-center gap-2 mb-1"><span class="badge badge-sm text-white font-bold" style="background:${bg};border-color:${bg}">Node ${statsNodeCount}:</span><input type="text" class="input input-bordered input-xs w-48 node-name" value="Index Node ${statsNodeCount}"><button class="btn btn-ghost btn-xs text-base-content/50 node-toggle" onclick="toggleNodeTextarea(this)" title="Show/hide JSON">▼</button><button class="btn btn-ghost btn-xs text-error" onclick="this.closest('.stats-node-input').remove()">x</button></div><textarea class="textarea textarea-bordered w-full h-24 font-mono text-xs node-stats-json" placeholder='Paste stats JSON...'></textarea>`;c.appendChild(d);updateNodeLabels()}
 
 function updateNodeLabels(){const nodes=document.querySelectorAll('#stats-nodes .stats-node-input');const total=nodes.length;nodes.forEach((n,i)=>{const badge=n.querySelector('.badge');if(badge){const bg=REPLICA_COLORS[i%REPLICA_COLORS.length];badge.style.background=bg;badge.style.borderColor=bg;badge.textContent=`Node ${i+1} of ${total}:`}})}
 
@@ -464,7 +464,7 @@ function findDuplicateKeys(keys){if(!keys)return[];const fields=getIndexFields(k
 
 function makeSystemTable(filtered){
   if(!filtered.length)return'';
-  let h=`<div class="card bg-base-100 shadow-sm mt-4"><div class="card-body p-3"><div class="flex justify-between items-center mb-2"><h3 class="font-bold text-sm">📋 Index Definitions Table</h3><div class="badge badge-ghost">${filtered.length} indexes</div></div><div class="stats-table-wrap"><table class="table table-xs table-pin-rows stats-table" id="tbl-sys"><thead><tr class="bg-base-200">
+  let h=`<div class="card bg-base-100 shadow-sm mt-4"><div class="card-body p-3"><div class="flex justify-between items-center mb-2"><h3 class="font-bold text-sm">Index Definitions Table</h3><div class="badge badge-ghost">${filtered.length} indexes</div></div><div class="stats-table-wrap"><table class="table table-xs table-pin-rows stats-table" id="tbl-sys"><thead><tr class="bg-base-200">
 <th data-col="name" class="cursor-pointer hover:bg-base-300" title="Index name">Index<span class="sa ml-1 text-[9px] text-base-content/30">▼</span></th>
 <th data-col="bucket" class="cursor-pointer hover:bg-base-300" title="Bucket">Bucket</th>
 <th data-col="scope" class="cursor-pointer hover:bg-base-300" title="Scope">Scope</th>
@@ -475,7 +475,7 @@ function makeSystemTable(filtered){
 <th data-col="dupeKeys" class="cursor-pointer hover:bg-base-300" title="Fields that appear more than once in the index keys">Dupe Keys</th>
 <th data-col="replica" class="cursor-pointer hover:bg-base-300" title="Number of replicas. Hover badges to see node placements">Replicas</th>
 <th data-col="createStmt" class="cursor-pointer hover:bg-base-300" title="CREATE INDEX statement">CREATE INDEX</th>
-<th title="Copy index definition to clipboard">📋</th>
+<th title="Copy index definition to clipboard"></th>
 </tr></thead><tbody>`;
   filtered.forEach(f=>{
     const isArr=isArrayIndex(f.keys);
@@ -505,7 +505,7 @@ function makeSystemTable(filtered){
 function renderTreemapView(){const c=document.getElementById('treemap-content');c.innerHTML='';activeCharts=activeCharts.filter(ch=>{try{ch.dispose()}catch{}return false});chartIndexMaps=[];if(!globalSystemFlat.length){c.innerHTML='<div class="text-center py-12 text-base-content/40">No data loaded</div>';return}const f=getFilters();let filtered=globalSystemFlat.filter(i=>matchFilter(i,f));if(f.uniqueOnly)filtered=dedup(filtered);if(!filtered.length){c.innerHTML='<div class="alert alert-warning"><span>No indexes match current filters</span></div>';return}
 // Build chart HTML: 4 charts in a 2x2 grid, then the table
 c.innerHTML=`<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><h3 class="font-bold text-sm mb-2">🏷️ Most Commonly Indexed Fields</h3><div id="wc-box-sys" class="abox"></div></div></div>
+<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><h3 class="font-bold text-sm mb-2">Most Commonly Indexed Fields</h3><div id="wc-box-sys" class="abox"></div></div></div>
 <div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div id="bar-last-scan" class="abox"></div></div></div>
 <div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div id="pie-where" class="abox"></div></div></div>
 <div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center justify-between mb-1"><h3 class="font-bold text-sm">Index Count by Bucket</h3><div class="join"><button class="btn btn-xs join-item" id="idx-count-pie-btn" onclick="switchIdxCountMode('pie')">Pie</button><button class="btn btn-xs join-item btn-active" id="idx-count-bar-btn" onclick="switchIdxCountMode('bar')">Bar</button></div></div><div id="bar-bucket-scope-stacked" class="chart-box"></div></div></div>
@@ -626,7 +626,7 @@ function renderLumpinessCard(){
     </div>
   </div>
   <div class="flex-1 min-w-[200px]">
-    <div class="flex items-center gap-2 mb-1"><div class="tooltip tooltip-bottom" data-tip="Measures how unevenly (lumpy) your GSI indexes are distributed across index nodes. A perfectly balanced cluster scores 100. Uneven distribution can cause hot spots, uneven memory pressure, and inconsistent query latency across nodes."><h3 class="font-bold text-sm cursor-help underline decoration-dotted">📐 Lumpiness Score</h3></div><span class="text-xs text-base-content/50">How evenly indexes are distributed across ${lump.nodeNames.length} nodes</span></div>
+    <div class="flex items-center gap-2 mb-1"><div class="tooltip tooltip-bottom" data-tip="Measures how unevenly (lumpy) your GSI indexes are distributed across index nodes. A perfectly balanced cluster scores 100. Uneven distribution can cause hot spots, uneven memory pressure, and inconsistent query latency across nodes."><h3 class="font-bold text-sm cursor-help underline decoration-dotted">Lumpiness Score</h3></div><span class="text-xs text-base-content/50">How evenly indexes are distributed across ${lump.nodeNames.length} nodes</span></div>
     <p class="text-[10px] text-base-content/50 mb-2">Weighted: 30% index count balance + 30% disk size balance + 20% memory balance + 20% replica spread. 100 = perfectly even.</p>
     <div class="grid grid-cols-4 gap-2 text-xs mb-2">
       <div class="tooltip tooltip-bottom" data-tip="How evenly the number of indexes is distributed across nodes. 0% = perfectly even, 100% = all indexes on one node."><div class="bg-base-100 rounded px-2 py-1 text-center cursor-help"><div class="text-[9px] text-base-content/50 underline decoration-dotted">Count Imbalance</div><div class="font-mono font-bold">${lump.countImbalance}%</div></div></div>
@@ -648,8 +648,8 @@ sec.innerHTML=`<div class="card-body p-3">
 <div class="flex justify-between items-center mb-2"><h3 class="font-bold text-sm"><span class="badge text-white font-bold" style="background:${REPLICA_COLORS[i%REPLICA_COLORS.length]};border-color:${REPLICA_COLORS[i%REPLICA_COLORS.length]}">Node ${i+1} of ${globalStatsFlat.length}</span> ${node.nodeName}</h3><div class="flex gap-2">${node.indexer?`<div class="badge badge-${node.indexer.indexer_state==='Active'?'success':'warning'} badge-sm">${node.indexer.indexer_state}</div>`:''}<div class="badge badge-ghost badge-sm">${filtered.length} indexes · ${fmt(totalDisk)}</div></div></div>
 ${node.indexer?`<div class="stats stats-horizontal shadow-sm mb-3 w-full"><div class="stat py-2 px-4" title="Total RAM consumed by all indexes on this node"><div class="stat-title text-[10px]">Memory Used</div><div class="stat-value text-base">${fmt(node.indexer.memory_used||0)}</div><div class="stat-desc text-[10px]">of ${fmt(node.indexer.memory_quota||0)} quota</div></div><div class="stat py-2 px-4" title="Percentage of the node's index memory quota currently in use. High values mean you're running out of room"><div class="stat-title text-[10px]">Memory Quota Used</div><div class="stat-value text-base ${(node.indexer.memory_used||0)/(node.indexer.memory_quota||1)>.9?'text-error':(node.indexer.memory_used||0)/(node.indexer.memory_quota||1)>.7?'text-warning':'text-success'}">${((node.indexer.memory_used||0)/(node.indexer.memory_quota||1)*100).toFixed(1)}%</div></div><div class="stat py-2 px-4" title="Total storage allocated by the indexer on this node (includes internal buffers and caches)"><div class="stat-title text-[10px]">Storage Allocated</div><div class="stat-value text-base">${fmt(node.indexer.memory_total_storage||0)}</div></div><div class="stat py-2 px-4" title="Combined on-disk size of all indexes on this node"><div class="stat-title text-[10px]">Total Disk</div><div class="stat-value text-base">${fmt(totalDisk)}</div></div></div>`:''}
 <div class="flex items-center gap-1 mb-1 flex-wrap">
-<div class="join"><button class="btn btn-ghost btn-xs join-item" onclick="treemapReset(${i})" title="Reset zoom & pan to default">🏠</button><button class="btn btn-ghost btn-xs join-item" onclick="treemapZoom(${i},'in')" title="Zoom in">➕</button><button class="btn btn-ghost btn-xs join-item" onclick="treemapZoom(${i},'out')" title="Zoom out">➖</button></div>
-<div class="join ml-1"><button class="btn btn-ghost btn-xs join-item" onclick="treemapPan(${i},0,-1)" title="Pan up">⬆️</button><button class="btn btn-ghost btn-xs join-item" onclick="treemapPan(${i},-1,0)" title="Pan left">⬅️</button><button class="btn btn-ghost btn-xs join-item" onclick="treemapPan(${i},1,0)" title="Pan right">➡️</button><button class="btn btn-ghost btn-xs join-item" onclick="treemapPan(${i},0,1)" title="Pan down">⬇️</button></div>
+<div class="join"><button class="btn btn-ghost btn-xs join-item" onclick="treemapReset(${i})" title="Reset zoom & pan to default">Reset</button><button class="btn btn-ghost btn-xs join-item" onclick="treemapZoom(${i},'in')" title="Zoom in">+</button><button class="btn btn-ghost btn-xs join-item" onclick="treemapZoom(${i},'out')" title="Zoom out">-</button></div>
+<div class="join ml-1"><button class="btn btn-ghost btn-xs join-item" onclick="treemapPan(${i},0,-1)" title="Pan up">▲</button><button class="btn btn-ghost btn-xs join-item" onclick="treemapPan(${i},-1,0)" title="Pan left">◀</button><button class="btn btn-ghost btn-xs join-item" onclick="treemapPan(${i},1,0)" title="Pan right">▶</button><button class="btn btn-ghost btn-xs join-item" onclick="treemapPan(${i},0,1)" title="Pan down">▼</button></div>
 <span id="tm-zoom-label-${i}" class="badge badge-ghost badge-xs font-mono ml-1">100%</span>
 <span class="text-[10px] text-base-content/40 ml-1">Click highlights table row · Use buttons to zoom & pan</span>
 </div>
@@ -680,7 +680,7 @@ if(statsF.length){
   const resArr=statsF.filter(x=>x.resident_percent!=null);const avgRes=resArr.length?(resArr.reduce((s,x)=>s+x.resident_percent,0)/resArr.length):0;
   const neverScanned=statsF.filter(x=>!x.last_known_scan_time||x.last_known_scan_time===0).length;
 
-  html+=`<div class="card bg-base-100 shadow-sm md:col-span-2"><div class="card-body p-3"><h3 class="font-bold text-sm mb-3">📊 Summary</h3>
+  html+=`<div class="card bg-base-100 shadow-sm md:col-span-2"><div class="card-body p-3"><h3 class="font-bold text-sm mb-3">Summary</h3>
 <div class="stats stats-horizontal shadow-sm w-full flex-wrap">
 <div class="stat py-2 px-3" title="Total number of GSI indexes across all nodes"><div class="stat-title text-[10px]">Total Indexes</div><div class="stat-value text-lg">${statsF.length}</div></div>
 <div class="stat py-2 px-3" title="Combined on-disk size of all indexes (includes fragmentation and overhead)"><div class="stat-title text-[10px]">Total Disk</div><div class="stat-value text-lg">${fmt(tDisk)}</div></div>
@@ -691,12 +691,12 @@ if(statsF.length){
 <div class="stat py-2 px-3" title="Average percentage of index data kept in memory. Low residency means more disk I/O during scans"><div class="stat-title text-[10px]">Avg Resident</div><div class="stat-value text-lg">${avgRes.toFixed(0)}%</div></div>
 <div class="stat py-2 px-3" title="Number of indexes that have never been queried. These consume disk and memory but provide no value — consider dropping them"><div class="stat-title text-[10px]">Never Scanned</div><div class="stat-value text-lg ${neverScanned>0?'text-warning':''}">${neverScanned}</div><div class="stat-desc text-[10px]">of ${statsF.length}</div></div>
 </div>
-${(()=>{const lump=calcLumpinessScore();if(!lump)return'';const sc=lump.score;const color=sc>=90?'text-success':sc>=75?'text-info':sc>=60?'text-warning':'text-error';return`<div class="flex items-center gap-3 mt-3 pt-3 border-t border-base-200"><div class="tooltip tooltip-right" data-tip="Measures how unevenly (lumpy) your GSI indexes are distributed across index nodes. 100 = perfectly balanced. Uneven distribution can cause hot spots, uneven memory pressure, and inconsistent query latency. Weighted: 30% index count + 30% disk size + 20% memory + 20% replica spread."><div class="flex items-center gap-2 cursor-help"><span class="text-sm font-bold underline decoration-dotted">📐 Lumpiness Score</span><span class="font-mono font-bold text-lg ${color}">${sc}</span><span class="badge badge-sm ${sc>=90?'badge-success':sc>=75?'badge-info':sc>=60?'badge-warning':'badge-error'}">${sc>=90?'Excellent':sc>=75?'Good':sc>=60?'Fair':sc>=40?'Poor':'Critical'}</span></div></div><div class="flex gap-2 text-[10px] text-base-content/50 ml-2"><div class="tooltip tooltip-bottom" data-tip="How evenly the number of indexes is distributed across nodes. 0% = perfectly even."><span class="cursor-help underline decoration-dotted">Count: ${lump.countImbalance}%</span></div><span>·</span><div class="tooltip tooltip-bottom" data-tip="How evenly total on-disk size is spread across nodes. 0% = perfectly even."><span class="cursor-help underline decoration-dotted">Disk: ${lump.diskImbalance}%</span></div><span>·</span><div class="tooltip tooltip-bottom" data-tip="How evenly RAM usage is spread across nodes. 0% = perfectly even."><span class="cursor-help underline decoration-dotted">Mem: ${lump.memImbalance}%</span></div><span>·</span><div class="tooltip tooltip-bottom" data-tip="Percentage of replicated indexes with copies on the same node instead of spread out. 0% = all replicas on separate nodes."><span class="cursor-help underline decoration-dotted">Replica: ${lump.replicaImbalance}%</span></div></div><span class="text-[10px] text-base-content/40 ml-auto">${lump.nodeNames.length} nodes</span></div>`})()}
+${(()=>{const lump=calcLumpinessScore();if(!lump)return'';const sc=lump.score;const color=sc>=90?'text-success':sc>=75?'text-info':sc>=60?'text-warning':'text-error';return`<div class="flex items-center gap-3 mt-3 pt-3 border-t border-base-200"><div class="tooltip tooltip-right" data-tip="Measures how unevenly (lumpy) your GSI indexes are distributed across index nodes. 100 = perfectly balanced. Uneven distribution can cause hot spots, uneven memory pressure, and inconsistent query latency. Weighted: 30% index count + 30% disk size + 20% memory + 20% replica spread."><div class="flex items-center gap-2 cursor-help"><span class="text-sm font-bold underline decoration-dotted">Lumpiness Score</span><span class="font-mono font-bold text-lg ${color}">${sc}</span><span class="badge badge-sm ${sc>=90?'badge-success':sc>=75?'badge-info':sc>=60?'badge-warning':'badge-error'}">${sc>=90?'Excellent':sc>=75?'Good':sc>=60?'Fair':sc>=40?'Poor':'Critical'}</span></div></div><div class="flex gap-2 text-[10px] text-base-content/50 ml-2"><div class="tooltip tooltip-bottom" data-tip="How evenly the number of indexes is distributed across nodes. 0% = perfectly even."><span class="cursor-help underline decoration-dotted">Count: ${lump.countImbalance}%</span></div><span>·</span><div class="tooltip tooltip-bottom" data-tip="How evenly total on-disk size is spread across nodes. 0% = perfectly even."><span class="cursor-help underline decoration-dotted">Disk: ${lump.diskImbalance}%</span></div><span>·</span><div class="tooltip tooltip-bottom" data-tip="How evenly RAM usage is spread across nodes. 0% = perfectly even."><span class="cursor-help underline decoration-dotted">Mem: ${lump.memImbalance}%</span></div><span>·</span><div class="tooltip tooltip-bottom" data-tip="Percentage of replicated indexes with copies on the same node instead of spread out. 0% = all replicas on separate nodes."><span class="cursor-help underline decoration-dotted">Replica: ${lump.replicaImbalance}%</span></div></div><span class="text-[10px] text-base-content/40 ml-auto">${lump.nodeNames.length} nodes</span></div>`})()}
 </div></div>`;
 }
 
 // Index Item Count Distribution (half width) + Performance Insights (half width)
-if(statsF.length)html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center justify-between mb-2"><h3 class="font-bold text-sm">📦 Index Item Count Distribution</h3><div class="join"><button class="btn btn-xs join-item btn-active" id="item-dist-bar-btn" onclick="switchItemDistMode('bar')">Bar</button><button class="btn btn-xs join-item" id="item-dist-pie-btn" onclick="switchItemDistMode('pie')">Pie</button></div></div><div id="bar-item-dist" class="abox"></div></div></div>`;
+if(statsF.length)html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center justify-between mb-2"><h3 class="font-bold text-sm">Index Item Count Distribution</h3><div class="join"><button class="btn btn-xs join-item btn-active" id="item-dist-bar-btn" onclick="switchItemDistMode('bar')">Bar</button><button class="btn btn-xs join-item" id="item-dist-pie-btn" onclick="switchItemDistMode('pie')">Pie</button></div></div><div id="bar-item-dist" class="abox"></div></div></div>`;
 else if(sysF.length)html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3 flex items-center justify-center text-base-content/40 text-sm">Load <b class="mx-1">Stats API</b> data to see Item Count Distribution</div></div>`;
 
 // Performance Insights panel (right half beside word cloud)
@@ -755,22 +755,22 @@ if(statsF.length){
 
   // Store full datasets for "Show More" modal
   insightData={
-    efficiency:{title:'🎯 Index Efficiency Score — All Indexes',desc:'Weighted score: 35% cache hit rate + 35% memory residency + 30% scan latency. Grade: A (90+), B (75+), C (60+), D (40+), F (<40). Sorted worst first.',colLabel:'Grade (Score)',items:allEffSorted,fmtVal:x=>`<span class="font-bold ${x.effColor}">${x.effGrade} (${x.effScore})</span>`},
-    rowsPerReq:{title:'📤 Rows Returned per Request — All Indexes',desc:'num_rows_returned ÷ num_requests. High values may indicate broad scans, missing WHERE clauses, or full index scans. Sorted highest first.',colLabel:'Rows / Req',items:allRowsSorted,fmtVal:x=>fmtN(Math.round(x.rowsPerReq))+' rows/req'},
-    scanIO:{title:'📊 Scan I/O per Request — All Indexes',desc:'scan_bytes_read ÷ num_requests. High values mean queries read large amounts of index data per scan. Consider covered indexes or tighter predicates. Sorted highest first.',colLabel:'Bytes / Req',items:allBytesSorted,fmtVal:x=>fmt(Math.round(x.bytesPerReq))+'/req'},
-    backlog:{title:'⏳ Indexing Backlog — All Indexes',desc:'num_docs_pending + num_docs_queued. Non-zero means the index is behind on mutations and queries may return stale data. Sorted largest backlog first.',colLabel:'Pending Docs',items:backlog,fmtVal:x=>fmtN(x.totalBacklog)+' docs'},
-    memEff:{title:'🧠 Memory Efficiency — All Indexes',desc:'items_count ÷ memory_used (in MB). Lower values mean the index uses more RAM per item — often wide keys, array indexes, or high overhead. Sorted least efficient first.',colLabel:'Items / MB',items:allMemEffSorted,fmtVal:x=>fmtN(Math.round(x.itemsPerMB))+' items/MB'},
-    wasted:{title:'🗑️ Never-Scanned Indexes — Full List',desc:'Indexes with last_known_scan_time = 0. These consume disk and RAM but have never served a query. Consider dropping them to reclaim resources. Sorted by disk size.',colLabel:'Disk / Memory',items:[...neverScannedItems].sort((a,b)=>(b.disk_size||0)-(a.disk_size||0)),fmtVal:x=>fmt(x.disk_size)+' / '+fmt(x.memory_used)}
+    efficiency:{title:'Index Efficiency Score — All Indexes',desc:'Weighted score: 35% cache hit rate + 35% memory residency + 30% scan latency. Grade: A (90+), B (75+), C (60+), D (40+), F (<40). Sorted worst first.',colLabel:'Grade (Score)',items:allEffSorted,fmtVal:x=>`<span class="font-bold ${x.effColor}">${x.effGrade} (${x.effScore})</span>`},
+    rowsPerReq:{title:'Rows Returned per Request — All Indexes',desc:'num_rows_returned ÷ num_requests. High values may indicate broad scans, missing WHERE clauses, or full index scans. Sorted highest first.',colLabel:'Rows / Req',items:allRowsSorted,fmtVal:x=>fmtN(Math.round(x.rowsPerReq))+' rows/req'},
+    scanIO:{title:'Scan I/O per Request — All Indexes',desc:'scan_bytes_read ÷ num_requests. High values mean queries read large amounts of index data per scan. Consider covered indexes or tighter predicates. Sorted highest first.',colLabel:'Bytes / Req',items:allBytesSorted,fmtVal:x=>fmt(Math.round(x.bytesPerReq))+'/req'},
+    backlog:{title:'Indexing Backlog — All Indexes',desc:'num_docs_pending + num_docs_queued. Non-zero means the index is behind on mutations and queries may return stale data. Sorted largest backlog first.',colLabel:'Pending Docs',items:backlog,fmtVal:x=>fmtN(x.totalBacklog)+' docs'},
+    memEff:{title:'Memory Efficiency — All Indexes',desc:'items_count ÷ memory_used (in MB). Lower values mean the index uses more RAM per item — often wide keys, array indexes, or high overhead. Sorted least efficient first.',colLabel:'Items / MB',items:allMemEffSorted,fmtVal:x=>fmtN(Math.round(x.itemsPerMB))+' items/MB'},
+    wasted:{title:'Never-Scanned Indexes — Full List',desc:'Indexes with last_known_scan_time = 0. These consume disk and RAM but have never served a query. Consider dropping them to reclaim resources. Sorted by disk size.',colLabel:'Disk / Memory',items:[...neverScannedItems].sort((a,b)=>(b.disk_size||0)-(a.disk_size||0)),fmtVal:x=>fmt(x.disk_size)+' / '+fmt(x.memory_used)}
   };
 
   const showMoreBtn=(key,total)=>total>3?`<button class="btn btn-ghost btn-xs w-full mt-1 text-[10px]" onclick="showInsightModal('${key}')">Show all ${total} →</button>`:'';
 
   html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3 overflow-y-auto" style="max-height:390px">
-<h3 class="font-bold text-sm mb-2">⚡ Performance Insights</h3>
+<h3 class="font-bold text-sm mb-2">Performance Insights</h3>
 <div class="space-y-3 text-xs">
 
 <div>
-  <div class="flex justify-between items-center mb-1"><div class="tooltip tooltip-right" data-tip="A combined health grade (A–F) for each index based on: 35% cache hit rate, 35% memory residency, and 30% scan latency. A = excellent (90+), B = good (75+), C = fair (60+), D = poor (40+), F = critical (<40). The 3 worst-scoring indexes are shown below."><span class="font-semibold cursor-help underline decoration-dotted">🎯 Index Efficiency Score</span></div><span class="font-bold text-lg ${overallColor}">${overallGrade}</span></div>
+  <div class="flex justify-between items-center mb-1"><div class="tooltip tooltip-right" data-tip="A combined health grade (A–F) for each index based on: 35% cache hit rate, 35% memory residency, and 30% scan latency. A = excellent (90+), B = good (75+), C = fair (60+), D = poor (40+), F = critical (<40). The 3 worst-scoring indexes are shown below."><span class="font-semibold cursor-help underline decoration-dotted">Index Efficiency Score</span></div><span class="font-bold text-lg ${overallColor}">${overallGrade}</span></div>
   <p class="text-base-content/50 text-[10px] mb-1">Weighted: 35% cache hit + 35% resident% + 30% latency</p>
   <div class="text-[10px] space-y-0.5">${worstEff.map(x=>`<div class="flex justify-between items-start"><div class="min-w-0 mr-2"><div class="font-semibold truncate">${x.name}</div><div class="text-[9px]">${bscLabel(x)}</div></div><span class="font-mono font-bold ${x.effColor} whitespace-nowrap">${x.effGrade} (${x.effScore})</span></div>`).join('')}</div>
   ${showMoreBtn('efficiency',allEffSorted.length)}
@@ -778,7 +778,7 @@ if(statsF.length){
 <div class="divider my-0"></div>
 
 <div>
-  <div class="flex justify-between items-center"><div class="tooltip tooltip-right" data-tip="Average number of rows returned per scan request (num_rows_returned ÷ num_requests). A very high ratio may indicate queries doing full index scans or missing WHERE clauses. A low ratio close to 1 is typical for point lookups. The top 3 highest-ratio indexes are shown."><span class="font-semibold cursor-help underline decoration-dotted">📤 Rows Returned / Request</span></div><span class="font-mono">${avgRowsPerReq.toFixed(1)} avg</span></div>
+  <div class="flex justify-between items-center"><div class="tooltip tooltip-right" data-tip="Average number of rows returned per scan request (num_rows_returned ÷ num_requests). A very high ratio may indicate queries doing full index scans or missing WHERE clauses. A low ratio close to 1 is typical for point lookups. The top 3 highest-ratio indexes are shown."><span class="font-semibold cursor-help underline decoration-dotted">Rows Returned / Request</span></div><span class="font-mono">${avgRowsPerReq.toFixed(1)} avg</span></div>
   <p class="text-base-content/50 text-[10px] mb-1">High ratio → broad scans or missing WHERE clause</p>
   <div class="text-[10px] space-y-0.5">${highRowsPerReq.map(x=>`<div class="flex justify-between items-start"><div class="min-w-0 mr-2"><div class="font-semibold truncate">${x.name}</div><div class="text-[9px]">${bscLabel(x)}</div></div><span class="font-mono text-warning whitespace-nowrap">${fmtN(Math.round(x.rowsPerReq))} rows/req</span></div>`).join('')}</div>
   ${showMoreBtn('rowsPerReq',allRowsSorted.length)}
@@ -786,7 +786,7 @@ if(statsF.length){
 <div class="divider my-0"></div>
 
 <div>
-  <div class="flex justify-between items-center"><div class="tooltip tooltip-right" data-tip="Bytes of index data read from disk per scan request (scan_bytes_read ÷ num_requests). High values mean queries are scanning large portions of the index — consider adding covered fields, tightening WHERE conditions, or adding a more selective index. Top 3 heaviest shown."><span class="font-semibold cursor-help underline decoration-dotted">📊 Scan I/O per Request</span></div></div>
+  <div class="flex justify-between items-center"><div class="tooltip tooltip-right" data-tip="Bytes of index data read from disk per scan request (scan_bytes_read ÷ num_requests). High values mean queries are scanning large portions of the index — consider adding covered fields, tightening WHERE conditions, or adding a more selective index. Top 3 heaviest shown."><span class="font-semibold cursor-help underline decoration-dotted">Scan I/O per Request</span></div></div>
   <p class="text-base-content/50 text-[10px] mb-1">Bytes read per scan — high = heavy I/O per query</p>
   <div class="text-[10px] space-y-0.5">${highBytesPerReq.length?highBytesPerReq.map(x=>`<div class="flex justify-between items-start"><div class="min-w-0 mr-2"><div class="font-semibold truncate">${x.name}</div><div class="text-[9px]">${bscLabel(x)}</div></div><span class="font-mono text-error whitespace-nowrap">${fmt(Math.round(x.bytesPerReq))}/req</span></div>`).join(''):'<span class="text-base-content/30">No scan data</span>'}</div>
   ${showMoreBtn('scanIO',allBytesSorted.length)}
@@ -794,7 +794,7 @@ if(statsF.length){
 <div class="divider my-0"></div>
 
 <div>
-  <div class="flex justify-between items-center"><div class="tooltip tooltip-right" data-tip="Total documents waiting to be indexed (num_docs_pending + num_docs_queued). Non-zero means the index is behind on mutations and queries may return stale results. Large backlogs can indicate undersized indexer resources or heavy write workloads."><span class="font-semibold cursor-help underline decoration-dotted">⏳ Indexing Backlog</span></div><span class="font-mono ${totalBacklog>0?'text-error':'text-success'}">${fmtN(totalBacklog)} docs</span></div>
+  <div class="flex justify-between items-center"><div class="tooltip tooltip-right" data-tip="Total documents waiting to be indexed (num_docs_pending + num_docs_queued). Non-zero means the index is behind on mutations and queries may return stale results. Large backlogs can indicate undersized indexer resources or heavy write workloads."><span class="font-semibold cursor-help underline decoration-dotted">Indexing Backlog</span></div><span class="font-mono ${totalBacklog>0?'text-error':'text-success'}">${fmtN(totalBacklog)} docs</span></div>
   <p class="text-base-content/50 text-[10px] mb-1">${backlog.length} index${backlog.length!==1?'es':''} behind on mutations — queries may read stale data</p>
   <div class="text-[10px] space-y-0.5">${backlog.slice(0,3).map(x=>`<div class="flex justify-between items-start"><div class="min-w-0 mr-2"><div class="font-semibold truncate">${x.name}</div><div class="text-[9px]">${bscLabel(x)}</div></div><span class="font-mono text-warning whitespace-nowrap">${fmtN(x.totalBacklog)} pending</span></div>`).join('')}</div>
   ${showMoreBtn('backlog',backlog.length)}
@@ -802,7 +802,7 @@ if(statsF.length){
 <div class="divider my-0"></div>
 
 <div>
-  <div class="flex justify-between items-center"><div class="tooltip tooltip-right" data-tip="How many indexed items each index stores per megabyte of RAM (items_count ÷ memory_used_MB). Lower values mean the index uses more memory per item — often due to wide keys, large array indexes, or high overhead. The 3 least efficient are shown. Compare with the average to find outliers."><span class="font-semibold cursor-help underline decoration-dotted">🧠 Memory Efficiency</span></div><span class="font-mono">${fmtN(Math.round(avgItemsPerMB))} items/MB</span></div>
+  <div class="flex justify-between items-center"><div class="tooltip tooltip-right" data-tip="How many indexed items each index stores per megabyte of RAM (items_count ÷ memory_used_MB). Lower values mean the index uses more memory per item — often due to wide keys, large array indexes, or high overhead. The 3 least efficient are shown. Compare with the average to find outliers."><span class="font-semibold cursor-help underline decoration-dotted">Memory Efficiency</span></div><span class="font-mono">${fmtN(Math.round(avgItemsPerMB))} items/MB</span></div>
   <p class="text-base-content/50 text-[10px] mb-1">Least efficient indexes (fewest items per MB RAM)</p>
   <div class="text-[10px] space-y-0.5">${leastMemEff.map(x=>`<div class="flex justify-between items-start"><div class="min-w-0 mr-2"><div class="font-semibold truncate">${x.name}</div><div class="text-[9px]">${bscLabel(x)}</div></div><span class="font-mono text-warning whitespace-nowrap">${fmtN(Math.round(x.itemsPerMB))} items/MB</span></div>`).join('')}</div>
   ${showMoreBtn('memEff',allMemEffSorted.length)}
@@ -810,7 +810,7 @@ if(statsF.length){
 <div class="divider my-0"></div>
 
 <div>
-  <div class="tooltip tooltip-right" data-tip="Categorizes all indexes by when they were last scanned. Hot = scanned within the last hour (actively used). Warm = within 1 day. Cold = within 1 week. Frozen = never scanned or over 1 week ago. A large Frozen segment means many indexes are consuming resources without serving queries."><span class="font-semibold mb-1 cursor-help underline decoration-dotted">🌡️ Index Activity Distribution</span></div>
+  <div class="tooltip tooltip-right" data-tip="Categorizes all indexes by when they were last scanned. Hot = scanned within the last hour (actively used). Warm = within 1 day. Cold = within 1 week. Frozen = never scanned or over 1 week ago. A large Frozen segment means many indexes are consuming resources without serving queries."><span class="font-semibold mb-1 cursor-help underline decoration-dotted">Index Activity Distribution</span></div>
   <div class="flex gap-1 w-full h-5 rounded overflow-hidden text-[9px] font-bold text-white text-center leading-5 mt-1">
     ${hotCount?`<div class="tooltip tooltip-bottom tooltip-success" data-tip="Hot: ${hotCount} indexes scanned within the last hour — actively serving queries" style="flex:${hotCount}"><div class="bg-success h-full flex items-center justify-center">${hotCount}</div></div>`:''}
     ${warmCount?`<div class="tooltip tooltip-bottom tooltip-info" data-tip="Warm: ${warmCount} indexes scanned within the last day" style="flex:${warmCount}"><div class="bg-info h-full flex items-center justify-center">${warmCount}</div></div>`:''}
@@ -818,13 +818,13 @@ if(statsF.length){
     ${frozenCount?`<div class="tooltip tooltip-bottom tooltip-error" data-tip="Frozen: ${frozenCount} indexes never scanned or inactive for over a week — candidates for removal" style="flex:${frozenCount}"><div class="bg-error h-full flex items-center justify-center">${frozenCount}</div></div>`:''}
   </div>
   <div class="flex justify-between text-[9px] text-base-content/50 mt-0.5">
-    <span>🟢 Hot ${hotCount}</span><span>🔵 Warm ${warmCount}</span><span>🟡 Cold ${coldCount}</span><span>🔴 Frozen ${frozenCount}</span>
+    <span>Hot ${hotCount}</span><span>Warm ${warmCount}</span><span>Cold ${coldCount}</span><span>Frozen ${frozenCount}</span>
   </div>
 </div>
 <div class="divider my-0"></div>
 
 <div>
-  <div class="flex justify-between items-center"><div class="tooltip tooltip-right" data-tip="Total disk space and RAM consumed by indexes that have never been scanned (last_known_scan_time = 0). These indexes cost storage and memory but provide zero query value. Dropping them reclaims these resources immediately."><span class="font-semibold cursor-help underline decoration-dotted">🗑️ Wasted Resources</span></div><span class="font-mono text-[10px]">${neverScannedItems.length} index${neverScannedItems.length!==1?'es':''}</span></div>
+  <div class="flex justify-between items-center"><div class="tooltip tooltip-right" data-tip="Total disk space and RAM consumed by indexes that have never been scanned (last_known_scan_time = 0). These indexes cost storage and memory but provide zero query value. Dropping them reclaims these resources immediately."><span class="font-semibold cursor-help underline decoration-dotted">Wasted Resources</span></div><span class="font-mono text-[10px]">${neverScannedItems.length} index${neverScannedItems.length!==1?'es':''}</span></div>
   <div class="flex gap-2 mt-1">
     <div class="flex-1 bg-error/10 rounded px-2 py-1 text-center"><div class="text-[9px] text-base-content/50">Disk Saved</div><div class="font-mono font-bold text-error text-sm">${fmt(wastedDisk)}</div></div>
     <div class="flex-1 bg-error/10 rounded px-2 py-1 text-center"><div class="text-[9px] text-base-content/50">Memory Saved</div><div class="font-mono font-bold text-error text-sm">${fmt(wastedMem)}</div></div>
@@ -855,14 +855,14 @@ if(statsF.length){
 
   // Top/Bottom tables
   const metrics=[
-    {key:'disk_size',label:'💾 Largest Disk Size',fmt:fmt,desc:true},
-    {key:'frag_percent',label:'🔴 Highest Fragmentation',fmt:v=>v+'%',desc:true},
-    {key:'resident_percent',label:'🔻 Lowest Resident %',fmt:v=>v+'%',desc:false},
-    {key:'cache_hit_percent',label:'🔻 Lowest Cache Hit %',fmt:v=>v+'%',desc:false},
-    {key:'bloat_ratio',label:'📈 Highest Bloat Ratio',fmt:v=>v.toFixed(1)+'x',desc:true},
-    {key:'memory_used',label:'🧠 Most Memory Used',fmt:fmt,desc:true},
-    {key:'num_requests',label:'📊 Most Requests',fmt:fmtN,desc:true},
-    {key:'items_count',label:'📦 Most Items',fmt:fmtN,desc:true},
+    {key:'disk_size',label:'Largest Disk Size',fmt:fmt,desc:true},
+    {key:'frag_percent',label:'Highest Fragmentation',fmt:v=>v+'%',desc:true},
+    {key:'resident_percent',label:'Lowest Resident %',fmt:v=>v+'%',desc:false},
+    {key:'cache_hit_percent',label:'Lowest Cache Hit %',fmt:v=>v+'%',desc:false},
+    {key:'bloat_ratio',label:'Highest Bloat Ratio',fmt:v=>v.toFixed(1)+'x',desc:true},
+    {key:'memory_used',label:'Most Memory Used',fmt:fmt,desc:true},
+    {key:'num_requests',label:'Most Requests',fmt:fmtN,desc:true},
+    {key:'items_count',label:'Most Items',fmt:fmtN,desc:true},
   ];
   metrics.forEach(m=>{
     const allSorted=[...statsF].filter(x=>x[m.key]!=null&&(m.desc||x[m.key]>=0)).sort((a,b)=>m.desc?b[m.key]-a[m.key]:a[m.key]-b[m.key]);
@@ -881,7 +881,7 @@ if(statsF.length){
   const never=statsF.filter(x=>!x.last_known_scan_time||x.last_known_scan_time===0);
   if(never.length){
     never.sort((a,b)=>(b.disk_size||0)-(a.disk_size||0));
-    html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center gap-2 mb-2"><h3 class="font-bold text-sm">⚠️ Never Scanned Indexes (${never.length})</h3>${nodeCountBadges(never)}</div><p class="text-xs text-base-content/50 mb-2">These indexes consume disk but have never been queried. Consider dropping them.</p><div class="overflow-y-auto max-h-[400px]"><table class="table table-xs table-pin-rows"><thead><tr class="bg-base-200"><th>Index</th><th>Node</th><th>Bucket</th><th>Scope</th><th class="text-right">Disk</th></tr></thead><tbody>`;
+    html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center gap-2 mb-2"><h3 class="font-bold text-sm">Never Scanned Indexes (${never.length})</h3>${nodeCountBadges(never)}</div><p class="text-xs text-base-content/50 mb-2">These indexes consume disk but have never been queried. Consider dropping them.</p><div class="overflow-y-auto max-h-[400px]"><table class="table table-xs table-pin-rows"><thead><tr class="bg-base-200"><th>Index</th><th>Node</th><th>Bucket</th><th>Scope</th><th class="text-right">Disk</th></tr></thead><tbody>`;
     never.forEach(x=>{html+=`<tr><td class="font-semibold">${x.name}${x._replicaTotal>1?replicaBadge(x):''}</td><td class="text-xs">${x._nodeName||'—'}</td><td>${x.bucket}</td><td>${x.scope}</td><td class="font-mono text-xs text-right">${fmt(x.disk_size)}</td></tr>`});
     html+=`</tbody></table></div></div></div>`;
   }
@@ -987,7 +987,7 @@ async function saveSystemToServer(){
   const js=document.getElementById('system-json').value.trim();
   if(!js){setStatus('system-status','Nothing to save','error');return}
   try{JSON.parse(js)}catch{try{JSON.parse('['+js+']')}catch{setStatus('system-status','Invalid JSON','error');return}}
-  try{await apiSave('system-indexes',JSON.parse(js.startsWith('[')?js:'['+js+']'));setStatus('system-status','💾 Saved to server','success');updateSavedCount()}catch(e){setStatus('system-status','Save failed: '+e.message,'error')}
+  try{await apiSave('system-indexes',JSON.parse(js.startsWith('[')?js:'['+js+']'));setStatus('system-status','Saved to server','success');updateSavedCount()}catch(e){setStatus('system-status','Save failed: '+e.message,'error')}
 }
 
 // Save all stats nodes
@@ -1003,7 +1003,7 @@ async function saveStatsToServer(){
     await apiSave(safeName,{nodeName:name,data:JSON.parse(json)});
     saved++;
   }
-  if(saved)setStatus('stats-status',`💾 Saved ${saved} node(s) to server`,'success');
+  if(saved)setStatus('stats-status',`Saved ${saved} node(s) to server`,'success');
   else setStatus('stats-status','Nothing to save','error');
   updateSavedCount();
 }
@@ -1019,14 +1019,12 @@ async function refreshFileList(){
   el.innerHTML=files.map(f=>{
     const kb=(f.size/1024).toFixed(1);
     const date=new Date(f.modified).toLocaleString();
-    const icon=f.name.startsWith('stats-')?'📈':'📊';
     return`<div class="flex items-center gap-2 p-2 bg-base-200 rounded">
-      <span class="text-sm">${icon}</span>
       <div class="flex-1 min-w-0">
         <div class="font-mono text-xs font-semibold truncate">${f.name}</div>
         <div class="text-[10px] text-base-content/40">${kb} KB · ${date}</div>
       </div>
-      <button class="btn btn-ghost btn-xs text-error" onclick="deleteOneFile('${f.name}')">🗑️</button>
+      <button class="btn btn-ghost btn-xs text-error" onclick="deleteOneFile('${f.name}')">Delete</button>
     </div>`}).join('');
 }
 
@@ -1131,7 +1129,7 @@ async function loadTOON(){
   try{
     const mod=await import('https://cdn.jsdelivr.net/npm/@toon-format/toon@2.1.0/+esm');
     toonEncode=mod.encode;toonDecode=mod.decode;toonLoaded=true;
-    console.log('✅ TOON library loaded');
+    console.log('TOON library loaded');
   }catch(e){
     console.warn('TOON library unavailable, falling back to minified JSON',e);
     toonLoaded=false;
@@ -1402,7 +1400,7 @@ function renderMoveIt(){
 
   // Score comparison card
   html+=`<div class="card bg-base-100 shadow-sm mb-4"><div class="card-body p-4">
-<h3 class="font-bold text-sm mb-3">📐 Lumpiness Score: Before → After</h3>
+<h3 class="font-bold text-sm mb-3">Lumpiness Score: Before → After</h3>
 <div class="flex items-center justify-center gap-8 flex-wrap">
   <div class="text-center">
     <div class="text-xs text-base-content/50 mb-1">Current</div>
@@ -1426,7 +1424,7 @@ function renderMoveIt(){
 
   // Before table
   html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3">
-<h3 class="font-bold text-sm mb-2">📊 Current Distribution</h3>
+<h3 class="font-bold text-sm mb-2">Current Distribution</h3>
 <table class="table table-xs"><thead><tr class="bg-base-200"><th>Node</th><th class="text-right">Indexes</th><th class="text-right">Disk</th><th class="text-right">Memory</th><th class="text-right">Buckets</th></tr></thead><tbody>`;
   plan.nodeNames.forEach((n,i)=>{
     const node=globalStatsFlat.find(x=>x.nodeName===n);
@@ -1440,7 +1438,7 @@ function renderMoveIt(){
 
   // After table
   html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3">
-<h3 class="font-bold text-sm mb-2">✨ Proposed Distribution</h3>
+<h3 class="font-bold text-sm mb-2">Proposed Distribution</h3>
 <table class="table table-xs"><thead><tr class="bg-base-200"><th>Node</th><th class="text-right">Indexes</th><th class="text-right">Disk</th><th class="text-right">Memory</th><th class="text-right">Buckets</th></tr></thead><tbody>`;
   plan.nodeNames.forEach((n,i)=>{
     const t=plan.nodeTotals[n];
@@ -1459,8 +1457,20 @@ function renderMoveIt(){
   // Move plan table
   if(plan.moves.length){
     html+=`<div class="card bg-base-100 shadow-sm mb-4"><div class="card-body p-3">
-<h3 class="font-bold text-sm mb-2">🚚 Proposed Moves (${plan.moves.length})</h3>
-<p class="text-xs text-base-content/50 mb-2">Indexes that would be relocated to achieve better balance. Large indexes are moved only when necessary.</p>
+<h3 class="font-bold text-sm mb-2">Proposed Moves (${plan.moves.length})</h3>
+<details class="mb-2"><summary class="text-xs text-base-content/50 cursor-pointer hover:text-base-content/70">Indexes that would be relocated to achieve better balance. <span class="link link-primary">How does it decide?</span></summary>
+<div class="bg-base-200 rounded-lg p-3 mt-2 text-xs text-base-content/70 space-y-2">
+  <p class="font-semibold text-base-content/80">Greedy Placement Algorithm</p>
+  <p>Indexes are sorted by total disk size (largest first) and placed one-by-one onto the node with the best score. Each node is scored using three penalty factors — <b>lower penalty = better placement</b>:</p>
+  <table class="table table-xs w-auto"><thead><tr class="bg-base-300"><th>Factor</th><th>Penalty Weight</th><th>What It Does</th></tr></thead><tbody>
+    <tr><td class="font-semibold">Disk balance</td><td class="font-mono">1 pt per MB on node</td><td>Penalizes nodes that already have more disk usage</td></tr>
+    <tr><td class="font-semibold">Index count</td><td class="font-mono">50 pts per index</td><td>Penalizes nodes that already have more indexes</td></tr>
+    <tr><td class="font-semibold">Bucket/scope/collection concentration</td><td class="font-mono">200 pts per same-keyspace index</td><td>Penalizes placing another index from the same keyspace on a node that already has many from it</td></tr>
+  </tbody></table>
+  <p><b>Replica separation</b> is a hard constraint — replicas of the same index are <b>never</b> placed on the same node (excluded with <code>-Infinity</code> score).</p>
+  <p>An index only becomes a "move" when the algorithm places it on a <b>different node</b> than where it currently lives.</p>
+</div>
+</details>
 <div class="stats-table-wrap"><table class="table table-xs table-zebra"><thead><tr class="bg-base-200"><th>#</th><th>Index</th><th>Bucket</th><th>Scope.Collection</th><th class="text-right">Disk Size</th><th>From</th><th></th><th>To</th><th>Why</th></tr></thead><tbody>`;
     plan.moves.forEach((m,i)=>{
       const reason=[];
@@ -1484,17 +1494,17 @@ function renderMoveIt(){
     });
     html+=`</tbody></table></div></div></div>`;
   } else {
-    html+=`<div class="alert alert-success mb-4"><span>🎉 Your indexes are already well-balanced! No moves needed.</span></div>`;
+    html+=`<div class="alert alert-success mb-4"><span>Your indexes are already well-balanced! No moves needed.</span></div>`;
   }
 
   // ALTER INDEX statements
   if(plan.alterStmts.length){
     html+=`<div class="card bg-base-100 shadow-sm mb-4"><div class="card-body p-3">
 <div class="flex items-center justify-between mb-2">
-  <h3 class="font-bold text-sm">📝 ALTER INDEX Statements (${plan.alterStmts.length})</h3>
+  <h3 class="font-bold text-sm">ALTER INDEX Statements (${plan.alterStmts.length})</h3>
   <div class="flex gap-1">
   <button class="btn btn-sm btn-ghost" onclick="const p=document.getElementById('moveit-alter-stmts');const d=document.getElementById('moveit-alter-desc');p.classList.toggle('hidden');if(d)d.classList.toggle('hidden');this.textContent=p.classList.contains('hidden')?'▶ Show':'▼ Hide'">▶ Show</button>
-  <button class="btn btn-sm btn-info text-white" onclick="copyMoveItAlter()">📋 Copy All</button>
+  <button class="btn btn-sm btn-info text-white" onclick="copyMoveItAlter()">Copy All</button>
   </div>
 </div>
 <p id="moveit-alter-desc" class="text-xs text-base-content/50 mb-2 hidden">Run these statements in Query Workbench or cbq shell to execute the moves. <a href="https://docs.couchbase.com/cloud/n1ql/n1ql-language-reference/alterindex.html" target="_blank" class="link link-info">Docs ↗</a></p>
@@ -1505,48 +1515,62 @@ function renderMoveIt(){
   // Plan B: AI rebalance section
   const initTopo=buildHashedTopology();
   html+=`<div class="card bg-purple-50 shadow-sm mb-4 border border-purple-200"><div class="card-body p-4">
-<div class="flex items-center justify-between mb-2">
-  <div>
-    <h3 class="font-bold text-sm">🤖 Plan B: Ask an AI to Rebalance</h3>
-    <p class="text-xs text-base-content/50">Copy the JSON below → give it to an AI → paste/upload the AI's response back.</p>
-  </div>
-  <div class="flex items-center gap-2 flex-wrap">
-    <div class="tooltip tooltip-bottom" data-tip="When ON, bucket/scope/collection/index names are hashed for privacy before sending to AI. When OFF, real names are sent — only disable if you trust the AI with your data.">
-      <label class="flex items-center gap-1 cursor-pointer">
-        <input type="checkbox" id="moveit-obfuscate" class="checkbox checkbox-xs checkbox-primary" checked onchange="refreshMoveItJSON()">
-        <span class="text-xs font-semibold">Obfuscated</span>
-      </label>
-    </div>
-    <div class="tooltip tooltip-bottom" data-tip="TOON (Token-Oriented Object Notation) compresses JSON for AI prompts — typically 30-60% fewer tokens. Uses the @toon-format/toon library.">
-      <label class="flex items-center gap-1 cursor-pointer">
-        <input type="checkbox" id="moveit-toon" class="checkbox checkbox-xs checkbox-secondary" checked onchange="refreshMoveItJSON()">
-        <span class="text-xs font-semibold">AI Optimize TOON</span>
-      </label>
-    </div>
-    <button class="btn btn-sm btn-primary" onclick="copyMoveItJSON()">📋 Copy for AI</button>
-    <span id="moveit-byte-count" class="badge badge-ghost badge-sm font-mono text-[10px]"></span>
-  </div>
-</div>
+<h3 class="font-bold text-sm mb-1">Plan B: Ask an AI to Rebalance</h3>
+<p class="text-xs text-base-content/50 mb-3">Export your index topology → give it to any AI → import the AI's proposed plan back.</p>
 
-<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
-  <div>
-    <div class="text-xs font-bold mb-1">① Send to AI <span id="moveit-obf-badge" class="badge badge-ghost badge-xs">hashed & anonymized</span></div>
-    <details id="moveit-json-details"><summary class="btn btn-xs btn-ghost">Show/hide JSON</summary>
-    <pre id="moveit-topo-json" class="bg-base-200 p-3 rounded text-[10px] font-mono overflow-x-auto whitespace-pre-wrap mt-2" style="max-height:350px;overflow-y:auto">${escapeHtml(JSON.stringify(initTopo,null,2))}</pre>
-    </details>
-  </div>
-  <div>
-    <div class="text-xs font-bold mb-1">② Paste AI Response <span class="badge badge-ghost badge-xs">same JSON structure, indexes rearranged</span></div>
-    <textarea id="moveit-ai-input" class="textarea textarea-bordered w-full h-28 font-mono text-xs" placeholder='Paste the AI response JSON here...'></textarea>
-    <div id="moveit-dropzone" class="border-2 border-dashed border-base-300 rounded-lg p-4 text-center text-xs text-base-content/40 cursor-pointer hover:border-purple-400 hover:bg-purple-50 transition-colors mt-2">
-      📂 Or drag & drop / <label class="link link-primary cursor-pointer">select a JSON file<input type="file" id="moveit-file-input" accept=".json,application/json" class="hidden" onchange="handleMoveItFile(this)"></label>
+<ul class="steps steps-vertical w-full text-xs">
+
+  <li data-content="1" class="step step-primary">
+    <div class="text-left w-full pl-2">
+      <div class="font-bold text-sm mb-1">Configure Export Options</div>
+      <div class="flex items-center gap-4 flex-wrap">
+        <div class="tooltip tooltip-bottom" data-tip="When ON, bucket/scope/collection/index names are hashed for privacy before sending to AI. When OFF, real names are sent — only disable if you trust the AI with your data.">
+          <label class="flex items-center gap-1 cursor-pointer">
+            <input type="checkbox" id="moveit-obfuscate" class="checkbox checkbox-xs checkbox-primary" checked onchange="refreshMoveItJSON()">
+            <span class="text-xs font-semibold">Obfuscated</span>
+          </label>
+        </div>
+        <div class="tooltip tooltip-bottom" data-tip="TOON (Token-Oriented Object Notation) compresses JSON for AI prompts — typically 30-60% fewer tokens. Uses the @toon-format/toon library.">
+          <label class="flex items-center gap-1 cursor-pointer">
+            <input type="checkbox" id="moveit-toon" class="checkbox checkbox-xs checkbox-secondary" checked onchange="refreshMoveItJSON()">
+            <span class="text-xs font-semibold">AI Optimize TOON</span>
+          </label>
+        </div>
+        <span id="moveit-obf-badge" class="badge badge-ghost badge-xs">hashed & anonymized</span>
+      </div>
     </div>
-    <div class="flex gap-2 mt-2">
-      <button class="btn btn-sm btn-primary" onclick="loadAIPlan()">🚀 Load AI Plan</button>
-      <span id="moveit-ai-status" class="text-xs self-center"></span>
+  </li>
+
+  <li data-content="2" class="step step-primary">
+    <div class="text-left w-full pl-2">
+      <div class="font-bold text-sm mb-1">Copy & Send to AI</div>
+      <p class="text-xs text-base-content/50 mb-2">Copy the data below and paste it into any AI (ChatGPT, Claude, Gemini, etc.).</p>
+      <div class="flex items-center gap-2 mb-2">
+        <button class="btn btn-sm btn-primary" onclick="copyMoveItJSON()">Copy for AI</button>
+        <span id="moveit-byte-count" class="badge badge-ghost badge-sm font-mono text-[10px]"></span>
+      </div>
+      <details id="moveit-json-details"><summary class="btn btn-xs btn-ghost">▶ Preview exported data</summary>
+      <pre id="moveit-topo-json" class="bg-base-200 p-3 rounded text-[10px] font-mono overflow-x-auto whitespace-pre-wrap mt-2" style="max-height:300px;overflow-y:auto">${escapeHtml(JSON.stringify(initTopo,null,2))}</pre>
+      </details>
     </div>
-  </div>
-</div>
+  </li>
+
+  <li data-content="3" class="step">
+    <div class="text-left w-full pl-2">
+      <div class="font-bold text-sm mb-1">Import AI Response</div>
+      <p class="text-xs text-base-content/50 mb-2">Paste the AI's rearranged JSON, upload a file, or drag & drop it below.</p>
+      <textarea id="moveit-ai-input" class="textarea textarea-bordered w-full h-24 font-mono text-xs" placeholder='Paste the AI response JSON here...'></textarea>
+      <div id="moveit-dropzone" class="border-2 border-dashed border-base-300 rounded-lg p-3 text-center text-xs text-base-content/40 cursor-pointer hover:border-purple-400 hover:bg-purple-50 transition-colors mt-2">
+        Or drag & drop / <label class="link link-primary cursor-pointer">select a JSON file<input type="file" id="moveit-file-input" accept=".json,application/json" class="hidden" onchange="handleMoveItFile(this)"></label>
+      </div>
+      <div class="flex items-center gap-2 mt-2">
+        <button class="btn btn-sm btn-primary" onclick="loadAIPlan()">Load AI Plan</button>
+        <span id="moveit-ai-status" class="text-xs self-center"></span>
+      </div>
+    </div>
+  </li>
+
+</ul>
 </div></div>`;
 
   // Plan B results container
@@ -1619,7 +1643,7 @@ function copyMoveItAlter(){
   if(!el)return;
   navigator.clipboard.writeText(el.textContent).then(()=>{
     const btn=el.closest('.card-body').querySelector('.btn-info');
-    if(btn){btn.textContent='✅ Copied!';setTimeout(()=>{btn.textContent='📋 Copy All'},2000)}
+    if(btn){btn.textContent='Copied!';setTimeout(()=>{btn.textContent='Copy All'},2000)}
   });
 }
 
@@ -1670,7 +1694,7 @@ function copyMoveItJSON(){
   if(!el)return;
   navigator.clipboard.writeText(el.textContent).then(()=>{
     const btn=document.querySelector('[onclick="copyMoveItJSON()"]');
-    if(btn){btn.textContent='✅ Copied!';setTimeout(()=>{btn.textContent='📋 Copy JSON for AI'},2000)}
+    if(btn){btn.textContent='Copied!';setTimeout(()=>{btn.textContent='Copy JSON for AI'},2000)}
   });
 }
 
@@ -1837,11 +1861,11 @@ function loadAIPlan(){
   const displayDesc=obf?deobfuscateText(aiDescription):aiDescription;
 
   let h=`<div class="card bg-purple-50 shadow-sm mb-4 border border-purple-200"><div class="card-body p-4">
-<h3 class="font-bold text-sm mb-3">🤖 Plan B: AI Rebalance Result</h3>`;
+<h3 class="font-bold text-sm mb-3">Plan B: AI Rebalance Result</h3>`;
 
   if(displayDesc){
     h+=`<div class="bg-white/70 rounded-lg p-3 mb-4 border border-purple-100">
-<div class="text-xs font-bold text-purple-700 mb-1">💬 AI Reasoning:</div>
+<div class="text-xs font-bold text-purple-700 mb-1">AI Reasoning:</div>
 <div class="text-xs text-base-content/70">${formatAIReasoning(displayDesc,nodeNames)}</div>
 </div>`;
   }
@@ -1857,7 +1881,7 @@ function loadAIPlan(){
 </div>
 
 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-<div><h4 class="font-bold text-xs mb-1">📊 Current</h4>
+<div><h4 class="font-bold text-xs mb-1">Current</h4>
 <table class="table table-xs"><thead><tr class="bg-base-200"><th>Node</th><th class="text-right">Indexes</th><th class="text-right">Disk</th><th class="text-right">Memory</th></tr></thead><tbody>`;
   nodeNames.forEach((n,i)=>{
     const node=globalStatsFlat.find(x=>x.nodeName===n);
@@ -1865,7 +1889,7 @@ function loadAIPlan(){
     h+=`<tr><td><span class="badge badge-xs text-white" style="background:${REPLICA_COLORS[i%REPLICA_COLORS.length]}">&nbsp;</span> ${n}</td><td class="font-mono text-xs text-right">${fl.length}</td><td class="font-mono text-xs text-right">${fmt(fl.reduce((s,x)=>s+(x.disk_size||0),0))}</td><td class="font-mono text-xs text-right">${fmt(fl.reduce((s,x)=>s+(x.memory_used||0),0))}</td></tr>`;
   });
   h+=`</tbody></table></div>
-<div><h4 class="font-bold text-xs mb-1">🤖 AI Plan B</h4>
+<div><h4 class="font-bold text-xs mb-1">AI Plan B</h4>
 <table class="table table-xs"><thead><tr class="bg-base-200"><th>Node</th><th class="text-right">Indexes</th><th class="text-right">Disk</th><th class="text-right">Memory</th></tr></thead><tbody>`;
   nodeNames.forEach((n,i)=>{
     const t=planBTotals[n];
@@ -1875,7 +1899,7 @@ function loadAIPlan(){
 
   // Moves table
   if(moves.length){
-    h+=`<h4 class="font-bold text-xs mb-1 mt-2">🚚 AI Moves (${moves.length})</h4>
+    h+=`<h4 class="font-bold text-xs mb-1 mt-2">AI Moves (${moves.length})</h4>
 <div class="stats-table-wrap"><table class="table table-xs table-zebra"><thead><tr class="bg-base-200"><th>#</th><th>Index</th><th>Bucket</th><th class="text-right">Disk</th><th>From</th><th></th><th>To</th></tr></thead><tbody>`;
     moves.forEach((m,i)=>{
       const fi=nodeNames.indexOf(m.fromNode),ti=nodeNames.indexOf(m.toNode);
@@ -1892,10 +1916,10 @@ function loadAIPlan(){
   // ALTER INDEX for Plan B
   if(alterStmts.length){
     h+=`<div class="mt-3"><div class="flex items-center justify-between mb-1">
-<h4 class="font-bold text-xs">📝 ALTER INDEX Statements (${alterStmts.length})</h4>
+<h4 class="font-bold text-xs">ALTER INDEX Statements (${alterStmts.length})</h4>
 <div class="flex gap-1">
 <button class="btn btn-xs btn-ghost" onclick="const p=document.getElementById('moveit-planb-alter');p.classList.toggle('hidden');this.textContent=p.classList.contains('hidden')?'▶ Show':'▼ Hide'">▶ Show</button>
-<button class="btn btn-xs btn-info text-white" onclick="copyPlanBAlter()">📋 Copy</button></div></div>
+<button class="btn btn-xs btn-info text-white" onclick="copyPlanBAlter()">Copy</button></div></div>
 <pre id="moveit-planb-alter" class="bg-base-200 p-3 rounded text-xs font-mono overflow-x-auto whitespace-pre-wrap hidden">${alterStmts.join('\n\n')}</pre></div>`;
   }
 
@@ -1909,7 +1933,7 @@ function copyPlanBAlter(){
   if(!el)return;
   navigator.clipboard.writeText(el.textContent).then(()=>{
     const btn=el.closest('div').querySelector('.btn-info');
-    if(btn){btn.textContent='✅ Copied!';setTimeout(()=>{btn.textContent='📋 Copy'},2000)}
+    if(btn){btn.textContent='Copied!';setTimeout(()=>{btn.textContent='Copy'},2000)}
   });
 }
 </script>

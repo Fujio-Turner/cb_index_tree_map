@@ -56,19 +56,15 @@ The `nodes` array includes **all** nodes where the index (including its replicas
 
 ## Plan B: AI-Assisted Rebalance
 
-### Workflow
+### Workflow (3-Step UI)
 
-```
-① Copy hashed/TOON topology JSON
-      ↓
-② Paste into any AI (ChatGPT, Claude, Gemini, etc.)
-      ↓
-③ AI returns rearranged JSON + description of why
-      ↓
-④ Paste / upload / drag-and-drop the AI response back
-      ↓
-⑤ Tool de-hashes names, scores the plan, generates ALTER INDEX statements
-```
+The Plan B section uses a vertical **stepper layout** to guide you through the process:
+
+| Step | Title | What You Do |
+|------|-------|-------------|
+| **1** Configure Export Options | Toggle **Obfuscated** (privacy) and **AI Optimize TOON** (token savings) checkboxes |
+| **2** Copy & Send to AI | Click **📋 Copy for AI**, then paste into any AI (ChatGPT, Claude, Gemini, etc.). Optionally preview the exported data. |
+| **3** Import AI Response | Paste the AI's rearranged JSON, upload a file, or drag & drop → click **🚀 Load AI Plan**. The tool de-hashes names, scores the plan, and generates ALTER INDEX statements. |
 
 ### Privacy: Obfuscated Mode (Default ON)
 
