@@ -25,7 +25,7 @@
   <div class="flex-1 gap-3">
     <span class="text-xl font-bold text-error">CB Index Treemap</span>
     <span class="text-xs text-base-content/50 hidden sm:inline">Visualize & analyze GSI index sizes, performance & capacity</span>
-    <span class="badge badge-ghost badge-sm text-[10px]">v2.1.0</span>
+    <span class="badge badge-ghost badge-sm text-[10px]">v2.2.0</span>
   </div>
   <div class="flex-none">
     <button class="btn btn-ghost btn-sm gap-1" onclick="openFileManager()"><span id="saved-count" class="badge badge-sm badge-ghost">0</span></button>
@@ -159,6 +159,16 @@
     <h3 id="insight-modal-title" class="font-bold text-lg mb-1"></h3>
     <p id="insight-modal-desc" class="text-xs text-base-content/50 mb-3"></p>
     <div id="insight-modal-body" class="overflow-y-auto max-h-[65vh]"></div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
+<!-- Chart Expand Modal -->
+<dialog id="chart-expand-modal" class="modal">
+  <div class="modal-box max-w-[95vw] w-[95vw] h-[90vh] max-h-[90vh] p-4 flex flex-col">
+    <form method="dialog"><button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2 z-10">x</button></form>
+    <h3 id="chart-expand-title" class="font-bold text-lg mb-2 pr-8"></h3>
+    <div id="chart-expand-body" class="flex-1 min-h-0"></div>
   </div>
   <form method="dialog" class="modal-backdrop"><button>close</button></form>
 </dialog>
@@ -545,10 +555,10 @@ function makeSystemTable(filtered){
 function renderTreemapView(){const c=document.getElementById('treemap-content');c.innerHTML='';activeCharts=activeCharts.filter(ch=>{try{ch.dispose()}catch{}return false});chartIndexMaps=[];if(!globalSystemFlat.length){c.innerHTML='<div class="text-center py-12 text-base-content/40">No data loaded</div>';return}const f=getFilters();let filtered=globalSystemFlat.filter(i=>matchFilter(i,f));if(f.uniqueOnly)filtered=dedup(filtered);if(!filtered.length){c.innerHTML='<div class="alert alert-warning"><span>No indexes match current filters</span></div>';return}
 // Build chart HTML: 4 charts in a 2x2 grid, then the table
 c.innerHTML=`<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center justify-between mb-2"><h3 class="font-bold text-sm">Most Commonly Indexed Fields</h3><div class="join"><button class="btn btn-xs join-item btn-active" id="wc-cloud-btn" onclick="switchWcMode('cloud')">Word Cloud</button><button class="btn btn-xs join-item" id="wc-pie-btn" onclick="switchWcMode('pie')">Pie</button></div></div><div id="wc-box-sys" class="abox"></div></div></div>
-<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div id="bar-last-scan" class="abox"></div></div></div>
-<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div id="pie-where" class="abox"></div></div></div>
-<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center justify-between mb-1"><h3 class="font-bold text-sm">Index Count by Bucket</h3><div class="join"><button class="btn btn-xs join-item" id="idx-count-pie-btn" onclick="switchIdxCountMode('pie')">Pie</button><button class="btn btn-xs join-item btn-active" id="idx-count-bar-btn" onclick="switchIdxCountMode('bar')">Bar</button></div></div><div id="bar-bucket-scope-stacked" class="chart-box"></div></div></div>
+<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center justify-between mb-2"><h3 class="font-bold text-sm">Most Commonly Indexed Fields</h3><div class="flex items-center gap-1"><div class="join"><button class="btn btn-xs join-item btn-active" id="wc-cloud-btn" onclick="switchWcMode('cloud')">Word Cloud</button><button class="btn btn-xs join-item" id="wc-pie-btn" onclick="switchWcMode('pie')">Pie</button></div><button class="btn btn-ghost btn-xs" onclick="expandChart('wc-box-sys','Most Commonly Indexed Fields')" title="Expand chart">⛶</button></div></div><div id="wc-box-sys" class="abox"></div></div></div>
+<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center justify-between mb-1"><h3 class="font-bold text-sm">Days Since Last Scan</h3><button class="btn btn-ghost btn-xs" onclick="expandChart('bar-last-scan','Days Since Last Scan')" title="Expand chart">⛶</button></div><div id="bar-last-scan" class="abox"></div></div></div>
+<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center justify-between mb-1"><h3 class="font-bold text-sm">Index Breakdown</h3><button class="btn btn-ghost btn-xs" onclick="expandChart('pie-where','Index Breakdown')" title="Expand chart">⛶</button></div><div id="pie-where" class="abox"></div></div></div>
+<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center justify-between mb-1"><h3 class="font-bold text-sm">Index Count by Bucket</h3><div class="flex items-center gap-1"><div class="join"><button class="btn btn-xs join-item" id="idx-count-pie-btn" onclick="switchIdxCountMode('pie')">Pie</button><button class="btn btn-xs join-item btn-active" id="idx-count-bar-btn" onclick="switchIdxCountMode('bar')">Bar</button></div><button class="btn btn-ghost btn-xs" onclick="expandChart('bar-bucket-scope-stacked','Index Count by Bucket')" title="Expand chart">⛶</button></div></div><div id="bar-bucket-scope-stacked" class="chart-box"></div></div></div>
 </div>`+makeSystemTable(filtered);
 setTimeout(()=>{renderSystemCharts(filtered)},50)}
 
@@ -695,6 +705,7 @@ ${node.indexer?`<div class="stats stats-horizontal shadow-sm mb-3 w-full"><div c
 <div class="join ml-1"><button class="btn btn-ghost btn-xs join-item" onclick="treemapPan(${i},0,-1)" title="Pan up">▲</button><button class="btn btn-ghost btn-xs join-item" onclick="treemapPan(${i},-1,0)" title="Pan left">◀</button><button class="btn btn-ghost btn-xs join-item" onclick="treemapPan(${i},1,0)" title="Pan right">▶</button><button class="btn btn-ghost btn-xs join-item" onclick="treemapPan(${i},0,1)" title="Pan down">▼</button></div>
 <span id="tm-zoom-label-${i}" class="badge badge-ghost badge-xs font-mono ml-1">100%</span>
 <span class="text-[10px] text-base-content/40 ml-1">Click highlights table row · Use buttons to zoom & pan</span>
+<button class="btn btn-ghost btn-xs ml-auto" onclick="expandChart('ch-${i}','${node.nodeName} Treemap')" title="Expand chart">⛶</button>
 </div>
 <div class="treemap-viewport"><div id="ch-${i}" class="chart-box"></div></div>
 ${makeTable(i,filtered)}</div>`;
@@ -731,7 +742,7 @@ ${(()=>{const lump=calcLumpinessScore(getFilteredStats());if(!lump)return'';cons
 }
 
 // Index Item Count Distribution (half width) + Performance Insights (half width)
-if(statsF.length)html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center justify-between mb-2"><h3 class="font-bold text-sm">Index Item Count Distribution</h3><div class="join"><button class="btn btn-xs join-item" id="item-dist-barnode-btn" onclick="switchItemDistMode('barByNode')">Bar By Node</button><button class="btn btn-xs join-item btn-active" id="item-dist-bar-btn" onclick="switchItemDistMode('bar')">Bar Sum</button><button class="btn btn-xs join-item" id="item-dist-pie-btn" onclick="switchItemDistMode('pie')">Pie Sum</button></div></div><div id="bar-item-dist" class="abox"></div></div></div>`;
+if(statsF.length)html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center justify-between mb-2"><h3 class="font-bold text-sm">Index Item Count Distribution</h3><div class="flex items-center gap-1"><div class="join"><button class="btn btn-xs join-item" id="item-dist-barnode-btn" onclick="switchItemDistMode('barByNode')">Bar By Node</button><button class="btn btn-xs join-item btn-active" id="item-dist-bar-btn" onclick="switchItemDistMode('bar')">Bar Sum</button><button class="btn btn-xs join-item" id="item-dist-pie-btn" onclick="switchItemDistMode('pie')">Pie Sum</button></div><button class="btn btn-ghost btn-xs" onclick="expandChart('bar-item-dist','Index Item Count Distribution')" title="Expand chart">⛶</button></div></div><div id="bar-item-dist" class="abox"></div></div></div>`;
 else if(sysF.length)html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3 flex items-center justify-center text-base-content/40 text-sm">Load <b class="mx-1">Stats API</b> data to see Item Count Distribution</div></div>`;
 
 // Performance Insights panel (right half beside word cloud)
@@ -875,18 +886,18 @@ if(statsF.length){
 
 if(statsF.length){
   // Disk by bucket (pie/bar toggle)
-  html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center justify-between mb-1"><div class="flex items-center gap-2"><h3 class="font-bold text-sm">Disk Usage by Bucket</h3>${nodeCountBadges(statsF)}</div><div class="join"><button class="btn btn-xs join-item btn-active" id="disk-bucket-pie-btn" onclick="switchBucketChartMode('disk','pie')">Pie</button><button class="btn btn-xs join-item" id="disk-bucket-bar-btn" onclick="switchBucketChartMode('disk','bar')">Bar</button></div></div><div id="pie-disk" class="abox"></div></div></div>`;
+  html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center justify-between mb-1"><div class="flex items-center gap-2"><h3 class="font-bold text-sm">Disk Usage by Bucket</h3>${nodeCountBadges(statsF)}</div><div class="flex items-center gap-1"><div class="join"><button class="btn btn-xs join-item btn-active" id="disk-bucket-pie-btn" onclick="switchBucketChartMode('disk','pie')">Pie</button><button class="btn btn-xs join-item" id="disk-bucket-bar-btn" onclick="switchBucketChartMode('disk','bar')">Bar</button></div><button class="btn btn-ghost btn-xs" onclick="expandChart('pie-disk','Disk Usage by Bucket')" title="Expand chart">⛶</button></div></div><div id="pie-disk" class="abox"></div></div></div>`;
 
   // Memory by bucket (pie/bar toggle)
-  html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center justify-between mb-1"><div class="flex items-center gap-2"><h3 class="font-bold text-sm">Memory Usage by Bucket</h3>${nodeCountBadges(statsF)}</div><div class="join"><button class="btn btn-xs join-item btn-active" id="mem-bucket-pie-btn" onclick="switchBucketChartMode('mem','pie')">Pie</button><button class="btn btn-xs join-item" id="mem-bucket-bar-btn" onclick="switchBucketChartMode('mem','bar')">Bar</button></div></div><div id="pie-mem" class="abox"></div></div></div>`;
+  html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center justify-between mb-1"><div class="flex items-center gap-2"><h3 class="font-bold text-sm">Memory Usage by Bucket</h3>${nodeCountBadges(statsF)}</div><div class="flex items-center gap-1"><div class="join"><button class="btn btn-xs join-item btn-active" id="mem-bucket-pie-btn" onclick="switchBucketChartMode('mem','pie')">Pie</button><button class="btn btn-xs join-item" id="mem-bucket-bar-btn" onclick="switchBucketChartMode('mem','bar')">Bar</button></div><button class="btn btn-ghost btn-xs" onclick="expandChart('pie-mem','Memory Usage by Bucket')" title="Expand chart">⛶</button></div></div><div id="pie-mem" class="abox"></div></div></div>`;
 
   // Bar: Disk vs In-Memory
   const topMemItems=[...statsF].sort((a,b)=>(b.disk_size||0)-(a.disk_size||0)).slice(0,15);
-  html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center gap-2 mb-1"><h3 class="font-bold text-sm">Index Size: Disk* vs Memory</h3>${nodeCountBadges(topMemItems)}</div><div id="bar-frag" class="abox"></div></div></div>`;
+  html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center justify-between mb-1"><div class="flex items-center gap-2"><h3 class="font-bold text-sm">Index Size: Disk* vs Memory</h3>${nodeCountBadges(topMemItems)}</div><button class="btn btn-ghost btn-xs" onclick="expandChart('bar-frag','Index Size: Disk* vs Memory')" title="Expand chart">⛶</button></div><div id="bar-frag" class="abox"></div></div></div>`;
 
   // Bar: Top disk
   const topDiskItems=[...statsF].sort((a,b)=>(b.disk_size||0)-(a.disk_size||0)).slice(0,15);
-  html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center gap-2 mb-1"><h3 class="font-bold text-sm">Index Storage Breakdown</h3>${nodeCountBadges(topDiskItems)}</div><div id="bar-disk" class="abox"></div></div></div>`;
+  html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center justify-between mb-1"><div class="flex items-center gap-2"><h3 class="font-bold text-sm">Index Storage Breakdown</h3>${nodeCountBadges(topDiskItems)}</div><button class="btn btn-ghost btn-xs" onclick="expandChart('bar-disk','Index Storage Breakdown')" title="Expand chart">⛶</button></div><div id="bar-disk" class="abox"></div></div></div>`;
 
   // Top/Bottom tables
   const metrics=[
@@ -1039,6 +1050,26 @@ function switchWcMode(mode){
 }
 
 window.addEventListener('resize',()=>activeCharts.forEach(c=>c.resize()));
+
+// ===== CHART EXPAND =====
+function expandChart(srcElId,title){
+  const srcEl=document.getElementById(srcElId);if(!srcEl)return;
+  const srcChart=echarts.getInstanceByDom(srcEl);if(!srcChart)return;
+  const modal=document.getElementById('chart-expand-modal');
+  document.getElementById('chart-expand-title').textContent=title||'';
+  const body=document.getElementById('chart-expand-body');
+  body.innerHTML='';
+  const div=document.createElement('div');div.style.width='100%';div.style.height='100%';
+  body.appendChild(div);
+  modal.showModal();
+  setTimeout(()=>{
+    const bigChart=echarts.init(div);
+    bigChart.setOption(srcChart.getOption());
+    bigChart.resize();
+    const onClose=()=>{bigChart.dispose();modal.removeEventListener('close',onClose)};
+    modal.addEventListener('close',onClose);
+  },100);
+}
 
 // ===== SERVER FILE API =====
 async function apiList(){try{const r=await fetch('/api/files');return r.ok?await r.json():[]}catch{return[]}}
