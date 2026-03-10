@@ -291,24 +291,33 @@ function cascadeFilters(){
   const all=[...globalSystemFlat,...globalStatsFlat.filter(n=>!selectedNodes.length||selectedNodes.includes(n.nodeName)).flatMap(n=>n.flat)];
   const fb=document.getElementById('f-bucket'),fs=document.getElementById('f-scope'),fc=document.getElementById('f-collection'),fi=document.getElementById('f-index');
   const curB=fb.value,curS=fs.value,curC=fc.value,curI=fi.value;
-  // Buckets: always show all
+  // Buckets: always show all, with index count per bucket
   const buckets=[...new Set(all.map(i=>i.bucket))].sort();
-  fb.innerHTML=`<option value="">All Buckets (${buckets.length})</option>`+buckets.map(v=>`<option${v===curB?' selected':''}>${v}</option>`).join('');
-  // Scopes: filtered by selected bucket
+  const bucketCounts={};buckets.forEach(b=>{bucketCounts[b]=new Set(all.filter(i=>i.bucket===b).map(i=>i.name)).size});
+  fb.innerHTML=`<option value="">All Buckets (${buckets.length})</option>`+buckets.map(v=>`<option value="${v}"${v===curB?' selected':''}>${v} (${bucketCounts[v]})</option>`).join('');
+  // Scopes: filtered by selected bucket, with index count per scope
   const scopePool=curB?all.filter(i=>i.bucket===curB):all;
   const scopes=[...new Set(scopePool.map(i=>i.scope))].sort();
+  const scopeCounts={};scopes.forEach(s=>{scopeCounts[s]=new Set(scopePool.filter(i=>i.scope===s).map(i=>i.name)).size});
   const validS=scopes.includes(curS)?curS:'';
-  fs.innerHTML=`<option value="">All Scopes (${scopes.length})</option>`+scopes.map(v=>`<option${v===validS?' selected':''}>${v}</option>`).join('');
-  // Collections: filtered by selected bucket + scope
+  fs.innerHTML=`<option value="">All Scopes (${scopes.length})</option>`+scopes.map(v=>`<option value="${v}"${v===validS?' selected':''}>${v} (${scopeCounts[v]})</option>`).join('');
+  // Collections: filtered by selected bucket + scope, with index count per collection
   const collPool=validS?scopePool.filter(i=>i.scope===validS):scopePool;
   const collections=[...new Set(collPool.map(i=>i.collection))].sort();
+  const collCounts={};collections.forEach(c=>{collCounts[c]=new Set(collPool.filter(i=>i.collection===c).map(i=>i.name)).size});
   const validC=collections.includes(curC)?curC:'';
-  fc.innerHTML=`<option value="">All Collections (${collections.length})</option>`+collections.map(v=>`<option${v===validC?' selected':''}>${v}</option>`).join('');
+  fc.innerHTML=`<option value="">All Collections (${collections.length})</option>`+collections.map(v=>`<option value="${v}"${v===validC?' selected':''}>${v} (${collCounts[v]})</option>`).join('');
   // Indexes: filtered by bucket + scope + collection
   const idxPool=validC?collPool.filter(i=>i.collection===validC):collPool;
   const indexes=[...new Set(idxPool.map(i=>i.name))].sort();
   const validI=indexes.includes(curI)?curI:'';
   fi.innerHTML=`<option value="">All Indexes (${indexes.length})</option>`+indexes.map(v=>`<option${v===validI?' selected':''}>${v}</option>`).join('');
+  // Scan filter: update counts
+  const fScan=document.getElementById('f-scan'),curScan=fScan.value;
+  const scanPool=idxPool;
+  const neverCount=scanPool.filter(i=>!i.last_known_scan_time||i.last_known_scan_time===0).length;
+  const scannedCount=scanPool.length-neverCount;
+  fScan.innerHTML=`<option value=""${curScan===''?' selected':''}>All (${scanPool.length})</option><option value="exclude-never"${curScan==='exclude-never'?' selected':''}>Exclude Never Scanned (${scannedCount})</option><option value="only-never"${curScan==='only-never'?' selected':''}>Only Never Scanned (${neverCount})</option>`;
   // Reset values that are no longer valid
   if(curS!==validS)fs.value=validS;
   if(curC!==validC)fc.value=validC;
