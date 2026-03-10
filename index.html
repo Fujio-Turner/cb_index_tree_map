@@ -25,7 +25,7 @@
   <div class="flex-1 gap-3">
     <span class="text-xl font-bold text-error">CB Index Treemap</span>
     <span class="text-xs text-base-content/50 hidden sm:inline">Visualize & analyze GSI index sizes, performance & capacity</span>
-    <span class="badge badge-ghost badge-sm text-[10px]">v2.0.1</span>
+    <span class="badge badge-ghost badge-sm text-[10px]">v2.1.0</span>
   </div>
   <div class="flex-none">
     <button class="btn btn-ghost btn-sm gap-1" onclick="openFileManager()"><span id="saved-count" class="badge badge-sm badge-ghost">0</span></button>
@@ -181,6 +181,8 @@
 <script>
 // ===== GLOBAL STATE =====
 let globalSystemFlat=[],globalStatsFlat=[],globalReplicaMap={},globalNodeColors={},currentMetric='disk_size',activeCharts=[],chartIndexMaps=[],statsNodeCount=1,insightData={};
+let priorityIndexes=new Set(); // fullKeys of indexes the user wants more in-memory
+let nodeRackZones={};          // nodeName -> rackZone string
 
 function buildNodeColors(){
   globalNodeColors={};
@@ -1250,8 +1252,19 @@ function buildHashedTopology(){
   aiNodeHashLookup=nodeLookup;
   const sampleNode=Object.keys(topo.nodes)[0]||'nodeHash';
   topo._meta={nodeCount:filtered.length,totalIndexes:filtered.reduce((s,n)=>s+n.flat.length,0),generatedAt:new Date().toISOString()};
-  topo._instructions_json='Rearrange indexes across nodes for optimal balance. Balance by: size, memory, requests, bucket/scope/collection diversity. Replicas of the same index (same bucket+scope+collection+index) MUST be on different nodes. Prefer not moving very large indexes unless it significantly improves balance. Return your response as JSON matching _response_schema exactly. Each index entry MUST be a plain CSV string (e.g. "bucket,scope,collection,index,0,0,0,0,1,1,100,0,0") — do NOT wrap the string in extra quotes or escape quotes within it. In the "description" field, explain WHY this arrangement is better — reference specific index ids, bucket hashes, and node hashes from the input.';
-  topo._instructions_toon='This input is in TOON format (Token-Oriented Object Notation, see toonformat.dev). Each node key has a typed array header like "nodeHash"[count]{field1,field2,...}: followed by CSV rows matching that header. Rearrange indexes across nodes for optimal balance. Balance by: size, memory, requests, bucket/scope/collection diversity. Replicas of the same index (same bucket+scope+collection+index) MUST be on different nodes. Prefer not moving very large indexes unless it significantly improves balance. Return your response as JSON matching _response_schema exactly. Each index entry MUST be a plain CSV string (e.g. "bucket,scope,collection,index,0,0,0,0,1,1,100,0,0") — do NOT wrap the string in extra quotes or escape quotes within it. In the "description" field, explain WHY this arrangement is better — reference specific index ids, bucket hashes, and node hashes from the input.';
+  // Add rack zones if configured
+  const rackInfo={};filtered.forEach(n=>{const r=nodeRackZones[n.nodeName];if(r)rackInfo[fnv1aShort(n.nodeName,salt)]=fnv1aShort(r,salt)});
+  if(Object.keys(rackInfo).length)topo._meta.rackZones=rackInfo;
+  // Add priority indexes if any
+  if(priorityIndexes.size){
+    topo._meta.priorityIndexes=[];
+    filtered.forEach(n=>{n.flat.forEach(idx=>{if(priorityIndexes.has(idx.fullKey)){topo._meta.priorityIndexes.push(fnv1aShort(idx.bucket,salt)+':'+fnv1aShort(idx.scope,salt)+':'+fnv1aShort(idx.collection,salt)+':'+fnv1aShort(idx.name,salt))}})});
+  }
+  const rackExtra=Object.keys(rackInfo).length?' Rack/Zone awareness: replicas of the same index MUST be on different racks (see _meta.rackZones for node→rack mapping).':'';
+  const prioExtra=priorityIndexes.size?' Priority indexes (listed in _meta.priorityIndexes) should be placed on nodes with the LEAST memory load so they get more RAM.':'';
+  const replicaRule='REPLICA RULES: Each index has replicaIndex and replicaTotal fields. You MUST output every copy — if replicaTotal is 2, that index MUST appear exactly 2 times in your output across 2 different nodes (once with replicaIndex=1, once with replicaIndex=2). Never drop or merge replicas. The total number of index entries in your output MUST equal the total in the input. Replicas of the same index (same bucket+scope+collection+index) MUST be on different nodes.';
+  topo._instructions_json='Rearrange indexes across nodes for optimal balance. Balance by: size, memory, requests, bucket/scope/collection diversity. '+replicaRule+rackExtra+prioExtra+' Prefer not moving very large indexes unless it significantly improves balance. Return your response as JSON matching _response_schema exactly. Each index entry MUST be a plain CSV string (e.g. "bucket,scope,collection,index,0,0,0,0,1,1,100,0,0") — do NOT wrap the string in extra quotes or escape quotes within it. In the "description" field, explain WHY this arrangement is better — reference specific index ids, bucket hashes, and node hashes from the input.';
+  topo._instructions_toon='This input is in TOON format (Token-Oriented Object Notation, see toonformat.dev). Each node key has a typed array header like "nodeHash"[count]{field1,field2,...}: followed by CSV rows matching that header. Rearrange indexes across nodes for optimal balance. Balance by: size, memory, requests, bucket/scope/collection diversity. '+replicaRule+rackExtra+prioExtra+' Prefer not moving very large indexes unless it significantly improves balance. Return your response as JSON matching _response_schema exactly. Each index entry MUST be a plain CSV string (e.g. "bucket,scope,collection,index,0,0,0,0,1,1,100,0,0") — do NOT wrap the string in extra quotes or escape quotes within it. In the "description" field, explain WHY this arrangement is better — reference specific index ids, bucket hashes, and node hashes from the input.';
   topo._response_schema=buildResponseSchema(sampleNode,true);
   return topo;
 }
@@ -1277,8 +1290,19 @@ function buildPlainTopology(){
   });
   const sampleNode=Object.keys(topo.nodes)[0]||'nodeName';
   topo._meta={nodeCount:filtered.length,totalIndexes:filtered.reduce((s,n)=>s+n.flat.length,0),generatedAt:new Date().toISOString()};
-  topo._instructions_json='Rearrange indexes across nodes for optimal balance. Balance by: size, memory, requests, bucket/scope/collection diversity. Replicas of the same index (same bucket+scope+collection+index) MUST be on different nodes. Prefer not moving very large indexes unless it significantly improves balance. Return your response as JSON matching _response_schema exactly. Each index entry MUST be a plain CSV string (e.g. "bucket,scope,collection,index,0,0,0,0,1,1,100,0,0") — do NOT wrap the string in extra quotes or escape quotes within it. In the "description" field, explain WHY this arrangement is better — reference specific index names, buckets, and nodes.';
-  topo._instructions_toon='This input is in TOON format (Token-Oriented Object Notation, see toonformat.dev). Each node key has a typed array header like "nodeName"[count]{field1,field2,...}: followed by CSV rows matching that header. Rearrange indexes across nodes for optimal balance. Balance by: size, memory, requests, bucket/scope/collection diversity. Replicas of the same index (same bucket+scope+collection+index) MUST be on different nodes. Prefer not moving very large indexes unless it significantly improves balance. Return your response as JSON matching _response_schema exactly. Each index entry MUST be a plain CSV string (e.g. "bucket,scope,collection,index,0,0,0,0,1,1,100,0,0") — do NOT wrap the string in extra quotes or escape quotes within it. In the "description" field, explain WHY this arrangement is better — reference specific index names, buckets, and nodes.';
+  // Add rack zones if configured
+  const rackInfoP={};filtered.forEach(n=>{const r=nodeRackZones[n.nodeName];if(r)rackInfoP[n.nodeName]=r});
+  if(Object.keys(rackInfoP).length)topo._meta.rackZones=rackInfoP;
+  // Add priority indexes if any
+  if(priorityIndexes.size){
+    topo._meta.priorityIndexes=[];
+    filtered.forEach(n=>{n.flat.forEach(idx=>{if(priorityIndexes.has(idx.fullKey)){topo._meta.priorityIndexes.push(idx.fullKey)}})});
+  }
+  const rackExtraP=Object.keys(rackInfoP).length?' Rack/Zone awareness: replicas of the same index MUST be on different racks (see _meta.rackZones for node→rack mapping).':'';
+  const prioExtraP=priorityIndexes.size?' Priority indexes (listed in _meta.priorityIndexes) should be placed on nodes with the LEAST memory load so they get more RAM.':'';
+  const replicaRuleP='REPLICA RULES: Each index has replicaIndex and replicaTotal fields. You MUST output every copy — if replicaTotal is 2, that index MUST appear exactly 2 times in your output across 2 different nodes (once with replicaIndex=1, once with replicaIndex=2). Never drop or merge replicas. The total number of index entries in your output MUST equal the total in the input. Replicas of the same index (same bucket+scope+collection+index) MUST be on different nodes.';
+  topo._instructions_json='Rearrange indexes across nodes for optimal balance. Balance by: size, memory, requests, bucket/scope/collection diversity. '+replicaRuleP+rackExtraP+prioExtraP+' Prefer not moving very large indexes unless it significantly improves balance. Return your response as JSON matching _response_schema exactly. Each index entry MUST be a plain CSV string (e.g. "bucket,scope,collection,index,0,0,0,0,1,1,100,0,0") — do NOT wrap the string in extra quotes or escape quotes within it. In the "description" field, explain WHY this arrangement is better — reference specific index names, buckets, and nodes.';
+  topo._instructions_toon='This input is in TOON format (Token-Oriented Object Notation, see toonformat.dev). Each node key has a typed array header like "nodeName"[count]{field1,field2,...}: followed by CSV rows matching that header. Rearrange indexes across nodes for optimal balance. Balance by: size, memory, requests, bucket/scope/collection diversity. '+replicaRuleP+rackExtraP+prioExtraP+' Prefer not moving very large indexes unless it significantly improves balance. Return your response as JSON matching _response_schema exactly. Each index entry MUST be a plain CSV string (e.g. "bucket,scope,collection,index,0,0,0,0,1,1,100,0,0") — do NOT wrap the string in extra quotes or escape quotes within it. In the "description" field, explain WHY this arrangement is better — reference specific index names, buckets, and nodes.';
   topo._response_schema=buildResponseSchema(sampleNode,false);
   return topo;
 }
@@ -1333,9 +1357,22 @@ function computeRebalancePlan(){
   const nodeTotals={};
   nodeNames.forEach(n=>{nodeTotals[n]={disk:0,mem:0,count:0,buckets:{}}});
 
+  // Build set of rack zones already used by other replicas in this group
+  function usedRacks(excludeNodes){
+    const racks=new Set();
+    excludeNodes.forEach(n=>{const r=nodeRackZones[n];if(r)racks.add(r)});
+    return racks;
+  }
+  const hasRackZones=Object.values(nodeRackZones).some(r=>r);
+
   // Score a node for an index placement
   function nodeScore(nodeName,idx,excludeNodes){
     if(excludeNodes.includes(nodeName))return-Infinity;// replica can't be on same node
+    // Rack zone constraint: replicas must not share a rack
+    if(hasRackZones&&nodeRackZones[nodeName]){
+      const racksTaken=usedRacks(excludeNodes);
+      if(racksTaken.has(nodeRackZones[nodeName]))return-Infinity;
+    }
     const t=nodeTotals[nodeName];
     // Lower score = better placement
     // Penalize: high disk, high count, same bucket concentration
@@ -1343,7 +1380,12 @@ function computeRebalancePlan(){
     const countPenalty=t.count*50;
     const bucketKey=idx.bucket+':'+idx.scope+':'+idx.collection;
     const bucketConcentration=(t.buckets[bucketKey]||0)*200;
-    return-(diskPenalty+countPenalty+bucketConcentration);
+    // Priority bonus: prefer nodes with lower memory load for priority indexes
+    let priorityPenalty=0;
+    if(priorityIndexes.has(idx.fullKey)){
+      priorityPenalty=t.mem/(1024*1024)*2;// 2 pts per MB of memory already on node
+    }
+    return-(diskPenalty+countPenalty+bucketConcentration+priorityPenalty);
   }
 
   // Sort replica groups: biggest first (by total disk of all replicas)
@@ -1455,6 +1497,7 @@ function renderMoveIt(){
   }
 
   const topo=buildCurrentTopology();
+  const filtered=getFilteredStats();
   const plan=computeRebalancePlan();
   if(!plan){c.innerHTML='<div class="alert alert-warning">Could not compute rebalance plan.</div>';return}
 
@@ -1484,42 +1527,109 @@ function renderMoveIt(){
     <div class="text-2xl font-bold font-mono ${deltaColor}">${deltaSign}${scoreDelta}</div>
   </div>
 </div>
-<p class="text-xs text-base-content/50 text-center mt-2">${plan.moves.length} index${plan.moves.length!==1?'es':''} would move · ${plan.alterStmts.length} ALTER INDEX statement${plan.alterStmts.length!==1?'s':''}</p>
+<p class="text-xs text-base-content/50 text-center mt-2">${plan.moves.length} index${plan.moves.length!==1?'es':''} would move · ${plan.alterStmts.length} ALTER INDEX statement${plan.alterStmts.length!==1?'s':''}${priorityIndexes.size?' · '+priorityIndexes.size+' priority':''}${Object.values(nodeRackZones).filter(Boolean).length?' · rack-aware':''}</p>
+</div></div>`;
+
+  // Rack/Zone Assignment card
+  const rackZones=[...new Set(Object.values(nodeRackZones).filter(Boolean))];
+  html+=`<div class="card bg-base-100 shadow-sm mb-4 border border-amber-200"><div class="card-body p-4">
+<h3 class="font-bold text-sm mb-1">Rack / Zone Awareness</h3>
+<p class="text-xs text-base-content/50 mb-3">Assign each index node to a rack or availability zone. Replicas will be placed on <b>different racks</b> to improve fault tolerance. Example: 6 index nodes across 3 racks (2 nodes each) — replicas are guaranteed to be on separate racks.</p>
+<div class="overflow-x-auto"><table class="table table-xs"><thead><tr class="bg-base-200"><th>Node</th><th>Rack / Zone</th></tr></thead><tbody>`;
+  plan.nodeNames.forEach((n,i)=>{
+    const val=nodeRackZones[n]||'';
+    html+=`<tr><td class="font-semibold"><span class="badge badge-xs text-white" style="background:${REPLICA_COLORS[i%REPLICA_COLORS.length]}">&nbsp;</span> ${n}</td>
+<td><input type="text" class="input input-bordered input-xs w-40 rack-zone-input" data-node="${escapeHtml(n)}" value="${escapeHtml(val)}" placeholder="e.g. rack-1, us-east-1a" onchange="onRackZoneChange(this)"></td></tr>`;
+  });
+  html+=`</tbody></table></div>
+<div class="flex items-center gap-2 mt-2">
+  <button class="btn btn-xs btn-warning" onclick="applyRackZonesAndRebalance()">Re-run with Rack Zones</button>
+  <button class="btn btn-xs btn-ghost" onclick="clearRackZones()">Clear All</button>
+  ${rackZones.length?`<span class="badge badge-sm badge-warning">${rackZones.length} rack(s) configured</span>`:'<span class="text-xs text-base-content/40">No racks configured — replica separation by node only</span>'}
+</div>
+</div></div>`;
+
+  // Priority Indexes picker card — dedup by base name (replicas grouped together)
+  const allIdxNames=[];
+  filtered.forEach(node=>{node.flat.forEach(idx=>{allIdxNames.push({fullKey:idx.fullKey,name:idx.name,bucket:idx.bucket,scope:idx.scope,collection:idx.collection,disk_size:idx.disk_size||0,memory_used:idx.memory_used||0,resident_percent:idx.resident_percent,nodeName:node.nodeName})})});
+  // Group by base name (strip replica suffix) and aggregate memory across replicas
+  const baseGroups={};
+  allIdxNames.forEach(x=>{
+    const baseName=x.name.replace(/ \(replica \d+\)$/,'');
+    const baseKey=x.bucket+':'+x.scope+':'+x.collection+':'+baseName;
+    if(!baseGroups[baseKey])baseGroups[baseKey]={baseName,baseKey,bucket:x.bucket,scope:x.scope,collection:x.collection,memory_used:0,resident_percent:null,fullKeys:[],count:0};
+    const g=baseGroups[baseKey];
+    g.fullKeys.push(x.fullKey);g.count++;
+    g.memory_used+=x.memory_used||0;
+    if(x.resident_percent!=null)g.resident_percent=g.resident_percent!=null?Math.min(g.resident_percent,x.resident_percent):x.resident_percent;
+  });
+  const uniqueIdxs=Object.values(baseGroups).sort((a,b)=>b.memory_used-a.memory_used);
+
+  html+=`<div class="card bg-base-100 shadow-sm mb-4 border border-green-200"><div class="card-body p-4">
+<h3 class="font-bold text-sm mb-1">Priority Indexes (Memory Affinity)</h3>
+<p class="text-xs text-base-content/50 mb-3">Select indexes that should be prioritized for <b>more in-memory placement</b>. During rebalance, priority indexes will be placed on nodes with the least memory pressure so they get more RAM.</p>
+<div class="flex items-center gap-2 mb-2">
+  <span class="badge badge-sm badge-success" id="priority-count">${priorityIndexes.size} selected</span>
+  <button class="btn btn-xs btn-ghost text-error" onclick="priorityIndexes.clear();renderMoveIt()">Clear</button>
+</div>
+<div class="stats-table-wrap" style="max-height:250px"><table class="table table-xs table-zebra stats-table"><thead><tr class="bg-base-200">
+<th class="w-8">Priority</th>
+<th data-col="name" class="cursor-pointer hover:bg-base-300">Index<span class="sa ml-1 text-[9px] text-base-content/30">▼</span></th>
+<th data-col="bucket" class="cursor-pointer hover:bg-base-300">Bucket<span class="sa ml-1 text-[9px] text-base-content/30">▼</span></th>
+<th data-col="scopecol" class="cursor-pointer hover:bg-base-300">Scope.Collection<span class="sa ml-1 text-[9px] text-base-content/30">▼</span></th>
+<th data-col="memory" class="cursor-pointer hover:bg-base-300 sa-desc" title="Sorted by memory (biggest first)">Memory<span class="sa ml-1 text-[9px] text-error">▼</span></th>
+<th data-col="resident" class="cursor-pointer hover:bg-base-300">Res%<span class="sa ml-1 text-[9px] text-base-content/30">▼</span></th>
+</tr></thead><tbody>`;
+  uniqueIdxs.forEach(x=>{
+    const checked=x.fullKeys.some(k=>priorityIndexes.has(k))?'checked':'';
+    const keysAttr=escapeHtml(JSON.stringify(x.fullKeys));
+    html+=`<tr class="${checked?'bg-green-50':''}">
+<td><input type="checkbox" class="checkbox checkbox-xs checkbox-success priority-cb" data-keys="${keysAttr}" ${checked} onchange="onPriorityToggle(this)"></td>
+<td class="font-semibold text-xs" data-sort="${x.baseName}">${x.baseName}</td>
+<td class="text-xs" data-sort="${x.bucket}">${x.bucket}</td>
+<td class="text-xs" data-sort="${x.scope}.${x.collection}">${x.scope}.${x.collection}</td>
+<td class="font-mono text-xs text-right" data-sort="${x.memory_used||0}">${fmt(x.memory_used)}</td>
+<td class="font-mono text-xs text-right" data-sort="${x.resident_percent!=null?x.resident_percent:-1}">${x.resident_percent!=null?x.resident_percent+'%':'—'}</td>
+</tr>`;
+  });
+  html+=`</tbody></table></div>
+<button class="btn btn-xs btn-success mt-2" onclick="applyPriorityAndRebalance()">Re-run with Priority</button>
 </div></div>`;
 
   // Before / After node comparison
   html+=`<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">`;
 
   // Before table
+  const showRack=Object.values(nodeRackZones).some(r=>r);
   html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3">
 <h3 class="font-bold text-sm mb-2">Current Distribution</h3>
-<table class="table table-xs"><thead><tr class="bg-base-200"><th>Node</th><th class="text-right">Indexes</th><th class="text-right">Disk</th><th class="text-right">Memory</th><th class="text-right">Buckets</th></tr></thead><tbody>`;
+<table class="table table-xs"><thead><tr class="bg-base-200"><th>Node</th>${showRack?'<th>Rack</th>':''}<th class="text-right">Indexes</th><th class="text-right">Disk</th><th class="text-right">Memory</th><th class="text-right">Buckets</th></tr></thead><tbody>`;
   plan.nodeNames.forEach((n,i)=>{
     const node=globalStatsFlat.find(x=>x.nodeName===n);
     const fl=node?node.flat:[];
     const disk=fl.reduce((s,x)=>s+(x.disk_size||0),0);
     const mem=fl.reduce((s,x)=>s+(x.memory_used||0),0);
     const bkts=new Set(fl.map(x=>x.bucket)).size;
-    html+=`<tr><td class="font-semibold"><span class="badge badge-xs text-white" style="background:${REPLICA_COLORS[i%REPLICA_COLORS.length]}">&nbsp;</span> ${n}</td><td class="font-mono text-xs text-right">${fl.length}</td><td class="font-mono text-xs text-right">${fmt(disk)}</td><td class="font-mono text-xs text-right">${fmt(mem)}</td><td class="font-mono text-xs text-right">${bkts}</td></tr>`;
+    html+=`<tr><td class="font-semibold"><span class="badge badge-xs text-white" style="background:${REPLICA_COLORS[i%REPLICA_COLORS.length]}">&nbsp;</span> ${n}</td>${showRack?`<td class="text-xs">${nodeRackZones[n]||'<span class="text-base-content/30">—</span>'}</td>`:''}<td class="font-mono text-xs text-right">${fl.length}</td><td class="font-mono text-xs text-right">${fmt(disk)}</td><td class="font-mono text-xs text-right">${fmt(mem)}</td><td class="font-mono text-xs text-right">${bkts}</td></tr>`;
   });
   html+=`</tbody></table></div></div>`;
 
   // After table
   html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3">
 <h3 class="font-bold text-sm mb-2">Proposed Distribution</h3>
-<table class="table table-xs"><thead><tr class="bg-base-200"><th>Node</th><th class="text-right">Indexes</th><th class="text-right">Disk</th><th class="text-right">Memory</th><th class="text-right">Buckets</th></tr></thead><tbody>`;
+<table class="table table-xs"><thead><tr class="bg-base-200"><th>Node</th>${showRack?'<th>Rack</th>':''}<th class="text-right">Indexes</th><th class="text-right">Disk</th><th class="text-right">Memory</th><th class="text-right">Buckets</th></tr></thead><tbody>`;
   plan.nodeNames.forEach((n,i)=>{
     const t=plan.nodeTotals[n];
     const bkts=Object.keys(t.buckets).length;
-    html+=`<tr><td class="font-semibold"><span class="badge badge-xs text-white" style="background:${REPLICA_COLORS[i%REPLICA_COLORS.length]}">&nbsp;</span> ${n}</td><td class="font-mono text-xs text-right">${t.count}</td><td class="font-mono text-xs text-right">${fmt(t.disk)}</td><td class="font-mono text-xs text-right">${fmt(t.mem)}</td><td class="font-mono text-xs text-right">${bkts}</td></tr>`;
+    html+=`<tr><td class="font-semibold"><span class="badge badge-xs text-white" style="background:${REPLICA_COLORS[i%REPLICA_COLORS.length]}">&nbsp;</span> ${n}</td>${showRack?`<td class="text-xs">${nodeRackZones[n]||'<span class="text-base-content/30">—</span>'}</td>`:''}<td class="font-mono text-xs text-right">${t.count}</td><td class="font-mono text-xs text-right">${fmt(t.disk)}</td><td class="font-mono text-xs text-right">${fmt(t.mem)}</td><td class="font-mono text-xs text-right">${bkts}</td></tr>`;
   });
   html+=`</tbody></table></div></div>`;
   html+=`</div>`;
 
-  // Before/After bar charts
+  // Before/After bar charts with toggle
   html+=`<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div id="moveit-bar-before" class="chart-half"></div></div></div>
-<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div id="moveit-bar-after" class="chart-half"></div></div></div>
+<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex justify-between items-center mb-1"><span class="text-xs font-bold">Current: Disk per Node</span><div class="join"><button class="btn btn-xs join-item btn-active" onclick="switchMoveItBar('before','sum',this)">Bar Sum</button><button class="btn btn-xs join-item" onclick="switchMoveItBar('before','bucket',this)">Bar By Bucket</button></div></div><div id="moveit-bar-before" class="chart-half"></div></div></div>
+<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex justify-between items-center mb-1"><span class="text-xs font-bold">Proposed: Disk per Node</span><div class="join"><button class="btn btn-xs join-item btn-active" onclick="switchMoveItBar('after','sum',this)">Bar Sum</button><button class="btn btn-xs join-item" onclick="switchMoveItBar('after','bucket',this)">Bar By Bucket</button></div></div><div id="moveit-bar-after" class="chart-half"></div></div></div>
 </div>`;
 
   // Move plan table
@@ -1534,18 +1644,22 @@ function renderMoveIt(){
     <tr><td class="font-semibold">Disk balance</td><td class="font-mono">1 pt per MB on node</td><td>Penalizes nodes that already have more disk usage</td></tr>
     <tr><td class="font-semibold">Index count</td><td class="font-mono">50 pts per index</td><td>Penalizes nodes that already have more indexes</td></tr>
     <tr><td class="font-semibold">Bucket/scope/collection concentration</td><td class="font-mono">200 pts per same-keyspace index</td><td>Penalizes placing another index from the same keyspace on a node that already has many from it</td></tr>
+    <tr><td class="font-semibold">Priority memory affinity</td><td class="font-mono">2 pts per MB memory on node</td><td>For priority indexes, strongly prefers nodes with less memory load so the priority index gets more RAM</td></tr>
   </tbody></table>
   <p><b>Replica separation</b> is a hard constraint — replicas of the same index are <b>never</b> placed on the same node (excluded with <code>-Infinity</code> score).</p>
+  <p><b>Rack/Zone awareness</b> — when rack zones are configured, replicas of the same index are <b>never</b> placed on the same rack (excluded with <code>-Infinity</code> score).</p>
   <p>An index only becomes a "move" when the algorithm places it on a <b>different node</b> than where it currently lives.</p>
 </div>
 </details>
 <div class="stats-table-wrap"><table class="table table-xs table-zebra"><thead><tr class="bg-base-200"><th>#</th><th>Index</th><th>Bucket</th><th>Scope.Collection</th><th class="text-right">Disk Size</th><th>From</th><th></th><th>To</th><th>Why</th></tr></thead><tbody>`;
     plan.moves.forEach((m,i)=>{
       const reason=[];
+      if(priorityIndexes.has(m.fullKey))reason.push('Priority — placed for best memory');
       if(m.disk_size>50*1024*1024)reason.push('Large index — moved for balance');
       else reason.push('Better size distribution');
       const fromBktCount=globalStatsFlat.find(n=>n.nodeName===m.fromNode)?.flat.filter(x=>x.bucket===m.bucket).length||0;
       if(fromBktCount>2)reason.push('Reduces bucket concentration on source');
+      if(nodeRackZones[m.fromNode]&&nodeRackZones[m.toNode]&&nodeRackZones[m.fromNode]!==nodeRackZones[m.toNode])reason.push('Rack zone separation');
       const fromIdx=plan.nodeNames.indexOf(m.fromNode);
       const toIdx=plan.nodeNames.indexOf(m.toNode);
       html+=`<tr>
@@ -1664,15 +1778,67 @@ function renderMoveIt(){
     });
   }
 
-  // Render before/after bar charts
+  // Store data for bar chart toggling
+  moveItBarData={
+    nodeNames:plan.nodeNames,
+    beforeFlat:{},afterFlat:{},
+  };
+  plan.nodeNames.forEach(n=>{
+    const node=globalStatsFlat.find(x=>x.nodeName===n);
+    moveItBarData.beforeFlat[n]=node?node.flat:[];
+    moveItBarData.afterFlat[n]=plan.assignment[n]||[];
+  });
+
+  // Render before/after bar charts (default: sum)
   setTimeout(()=>{
-    const beforeDisk=plan.nodeNames.map(n=>{const node=globalStatsFlat.find(x=>x.nodeName===n);return node?node.flat.reduce((s,x)=>s+(x.disk_size||0),0):0});
-    const afterDisk=plan.afterDiskPerNode;
-    const elB=document.getElementById('moveit-bar-before');
-    const elA=document.getElementById('moveit-bar-after');
-    if(elB){const ch=echarts.init(elB);activeCharts.push(ch);ch.setOption({title:{text:'Current: Disk per Node',left:'center',textStyle:{fontSize:12}},tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:p=>p[0]?`<b>${p[0].name}</b><br>${fmt(p[0].value)}`:''}, grid:{left:10,right:20,top:35,bottom:5,containLabel:true},xAxis:{type:'value',axisLabel:{fontSize:10,formatter:fmt}},yAxis:{type:'category',data:plan.nodeNames,axisLabel:{fontSize:9},inverse:true},series:[{type:'bar',data:beforeDisk.map((v,i)=>({value:v,itemStyle:{color:REPLICA_COLORS[i%REPLICA_COLORS.length]}})),barMaxWidth:24}]})}
-    if(elA){const ch=echarts.init(elA);activeCharts.push(ch);ch.setOption({title:{text:'Proposed: Disk per Node',left:'center',textStyle:{fontSize:12}},tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:p=>p[0]?`<b>${p[0].name}</b><br>${fmt(p[0].value)}`:''}, grid:{left:10,right:20,top:35,bottom:5,containLabel:true},xAxis:{type:'value',axisLabel:{fontSize:10,formatter:fmt}},yAxis:{type:'category',data:plan.nodeNames,axisLabel:{fontSize:9},inverse:true},series:[{type:'bar',data:afterDisk.map((v,i)=>({value:v,itemStyle:{color:REPLICA_COLORS[i%REPLICA_COLORS.length]}})),barMaxWidth:24}]})}
+    renderMoveItBarChart('moveit-bar-before','before','sum');
+    renderMoveItBarChart('moveit-bar-after','after','sum');
   },100);
+}
+
+// ===== MOVE IT BAR CHARTS =====
+let moveItBarData=null;
+const BUCKET_COLORS=['#3b82f6','#22c55e','#f59e0b','#ef4444','#8b5cf6','#ec4899','#14b8a6','#f97316','#06b6d4','#84cc16','#6366f1','#d946ef','#0ea5e9','#a3e635','#fb923c'];
+
+function renderMoveItBarChart(elId,which,mode){
+  const el=document.getElementById(elId);if(!el)return;
+  const data=moveItBarData;if(!data)return;
+  const nodeNames=data.nodeNames;
+  const flatMap=which==='before'?data.beforeFlat:(which==='after'?data.afterFlat:(which==='planb-before'?data.planbBeforeFlat:data.planbAfterFlat));
+
+  const ex=echarts.getInstanceByDom(el);if(ex){activeCharts=activeCharts.filter(c=>c!==ex);ex.dispose()}
+  const ch=echarts.init(el);activeCharts.push(ch);
+
+  if(mode==='sum'){
+    const diskValues=nodeNames.map(n=>(flatMap[n]||[]).reduce((s,x)=>s+(x.disk_size||0),0));
+    ch.setOption({tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:p=>p[0]?`<b>${p[0].name}</b><br>${fmt(p[0].value)}`:''}, grid:{left:10,right:20,top:10,bottom:5,containLabel:true},xAxis:{type:'value',axisLabel:{fontSize:10,formatter:fmt}},yAxis:{type:'category',data:nodeNames,axisLabel:{fontSize:9},inverse:true},series:[{type:'bar',data:diskValues.map((v,i)=>({value:v,itemStyle:{color:REPLICA_COLORS[i%REPLICA_COLORS.length]}})),barMaxWidth:24}]});
+  } else {
+    // Stacked by bucket
+    const allBuckets=new Set();
+    nodeNames.forEach(n=>(flatMap[n]||[]).forEach(x=>allBuckets.add(x.bucket)));
+    const bucketList=[...allBuckets].sort();
+    // Pre-compute index counts per bucket per node for tooltips
+    const bucketCounts={};
+    bucketList.forEach(bkt=>{bucketCounts[bkt]={};nodeNames.forEach(n=>{bucketCounts[bkt][n]=(flatMap[n]||[]).filter(x=>x.bucket===bkt).length})});
+    const series=bucketList.map((bkt,bi)=>({
+      name:bkt,type:'bar',stack:'total',barMaxWidth:24,
+      itemStyle:{color:BUCKET_COLORS[bi%BUCKET_COLORS.length]},
+      data:nodeNames.map(n=>(flatMap[n]||[]).filter(x=>x.bucket===bkt).reduce((s,x)=>s+(x.disk_size||0),0))
+    }));
+    ch.setOption({tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:function(p){if(!p.length)return'';const nodeName=p[0].name;let h='<b>'+nodeName+'</b><br>';let total=0,totalCount=0;p.forEach(x=>{if(x.value>0){const cnt=bucketCounts[x.seriesName]?bucketCounts[x.seriesName][nodeName]||0:0;h+=x.marker+' '+x.seriesName+': '+fmt(x.value)+' ('+cnt+' indexes)<br>';total+=x.value;totalCount+=cnt}});h+='<b>Total: '+fmt(total)+' ('+totalCount+' indexes)</b>';return h}},legend:{type:'scroll',bottom:0,textStyle:{fontSize:9}},grid:{left:10,right:20,top:10,bottom:30,containLabel:true},xAxis:{type:'value',axisLabel:{fontSize:10,formatter:fmt}},yAxis:{type:'category',data:nodeNames,axisLabel:{fontSize:9},inverse:true},series});
+  }
+}
+
+function switchMoveItBar(which,mode,btn){
+  btn.closest('.join').querySelectorAll('.btn').forEach(b=>b.classList.remove('btn-active'));
+  btn.classList.add('btn-active');
+  renderMoveItBarChart('moveit-bar-'+which,which,mode);
+}
+
+function switchPlanBBar(which,mode,btn){
+  btn.closest('.join').querySelectorAll('.btn').forEach(b=>b.classList.remove('btn-active'));
+  btn.classList.add('btn-active');
+  renderMoveItBarChart('planb-bar-'+which,'planb-'+which,mode);
 }
 
 function escapeHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
@@ -1705,6 +1871,18 @@ function formatAIReasoning(text,nodeNames){
   }
   return s;
 }
+
+function onPriorityToggle(cb){
+  const keys=JSON.parse(cb.dataset.keys);
+  keys.forEach(k=>{if(cb.checked)priorityIndexes.add(k);else priorityIndexes.delete(k)});
+  const badge=document.getElementById('priority-count');
+  if(badge)badge.textContent=priorityIndexes.size+' selected';
+  cb.closest('tr').className=cb.checked?'bg-green-50':'';
+}
+function applyPriorityAndRebalance(){renderMoveIt()}
+function onRackZoneChange(input){nodeRackZones[input.dataset.node]=input.value.trim()}
+function applyRackZonesAndRebalance(){renderMoveIt()}
+function clearRackZones(){nodeRackZones={};renderMoveIt()}
 
 function copyMoveItAlter(){
   const el=document.getElementById('moveit-alter-stmts');
@@ -1749,7 +1927,8 @@ async function refreshMoveItJSON(){
   if(badge){
     const modeBadge=obf?'hashed':'plain text';
     const fmtBadge=isToon?'TOON':'JSON';
-    badge.textContent=modeBadge+' · '+fmtBadge;
+    const hasRacks=Object.values(nodeRackZones).some(r=>r);
+    badge.innerHTML=modeBadge+' · '+fmtBadge+(hasRacks?'':' · <span class="badge badge-warning badge-xs text-[10px]">No Server Groups</span>');
   }
   if(byteEl){
     const bytes=new Blob([outputStr]).size;
@@ -1976,6 +2155,12 @@ function loadAIPlan(){
   });
   h+=`</tbody></table></div></div>`;
 
+  // Plan B bar charts
+  h+=`<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 mt-4">
+<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex justify-between items-center mb-1"><span class="text-xs font-bold">Current: Disk per Node</span><div class="join"><button class="btn btn-xs join-item btn-active" onclick="switchPlanBBar('before','sum',this)">Bar Sum</button><button class="btn btn-xs join-item" onclick="switchPlanBBar('before','bucket',this)">Bar By Bucket</button></div></div><div id="planb-bar-before" class="chart-half"></div></div></div>
+<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex justify-between items-center mb-1"><span class="text-xs font-bold">AI Plan B: Disk per Node</span><div class="join"><button class="btn btn-xs join-item btn-active" onclick="switchPlanBBar('after','sum',this)">Bar Sum</button><button class="btn btn-xs join-item" onclick="switchPlanBBar('after','bucket',this)">Bar By Bucket</button></div></div><div id="planb-bar-after" class="chart-half"></div></div></div>
+</div>`;
+
   // Moves table
   if(moves.length){
     h+=`<h4 class="font-bold text-xs mb-1 mt-2">AI Moves (${moves.length})</h4>
@@ -2005,6 +2190,19 @@ function loadAIPlan(){
   h+=`</div></div>`;
 
   document.getElementById('moveit-planb-results').innerHTML=h;
+
+  // Store Plan B bar data and render charts
+  if(!moveItBarData)moveItBarData={nodeNames,beforeFlat:{},afterFlat:{},planbBeforeFlat:{},planbAfterFlat:{}};
+  moveItBarData.planbBeforeFlat={};moveItBarData.planbAfterFlat={};
+  nodeNames.forEach(n=>{
+    const node=globalStatsFlat.find(x=>x.nodeName===n);
+    moveItBarData.planbBeforeFlat[n]=node?node.flat:[];
+    moveItBarData.planbAfterFlat[n]=planBAssignment[n]||[];
+  });
+  setTimeout(()=>{
+    renderMoveItBarChart('planb-bar-before','planb-before','sum');
+    renderMoveItBarChart('planb-bar-after','planb-after','sum');
+  },100);
 }
 
 function copyPlanBAlter(){
