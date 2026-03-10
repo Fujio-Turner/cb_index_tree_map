@@ -718,7 +718,7 @@ ${(()=>{const lump=calcLumpinessScore(getFilteredStats());if(!lump)return'';cons
 }
 
 // Index Item Count Distribution (half width) + Performance Insights (half width)
-if(statsF.length)html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center justify-between mb-2"><h3 class="font-bold text-sm">Index Item Count Distribution</h3><div class="join"><button class="btn btn-xs join-item btn-active" id="item-dist-bar-btn" onclick="switchItemDistMode('bar')">Bar</button><button class="btn btn-xs join-item" id="item-dist-pie-btn" onclick="switchItemDistMode('pie')">Pie</button></div></div><div id="bar-item-dist" class="abox"></div></div></div>`;
+if(statsF.length)html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center justify-between mb-2"><h3 class="font-bold text-sm">Index Item Count Distribution</h3><div class="join"><button class="btn btn-xs join-item" id="item-dist-barnode-btn" onclick="switchItemDistMode('barByNode')">Bar By Node</button><button class="btn btn-xs join-item btn-active" id="item-dist-bar-btn" onclick="switchItemDistMode('bar')">Bar Sum</button><button class="btn btn-xs join-item" id="item-dist-pie-btn" onclick="switchItemDistMode('pie')">Pie Sum</button></div></div><div id="bar-item-dist" class="abox"></div></div></div>`;
 else if(sysF.length)html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3 flex items-center justify-center text-base-content/40 text-sm">Load <b class="mx-1">Stats API</b> data to see Item Count Distribution</div></div>`;
 
 // Performance Insights panel (right half beside word cloud)
@@ -981,11 +981,26 @@ function renderItemDistChart(statsF,mode){
   const ttFmt=function(b){return'Count: '+b.count+' indexes<br>Max: '+fmtCompact(b.max)+'<br>Min: '+fmtCompact(b.min)+'<br>Avg: '+fmtCompact(b.avg)};
   if(m==='pie'){
     ch.setOption({title:{text:'Index Size Distribution by Item Count',subtext:'Largest index = 100% ('+fmtCompact(maxItems)+' items)',left:'center',textStyle:{fontSize:12},subtextStyle:{fontSize:10}},tooltip:{trigger:'item',formatter:function(p){const b=buckets[p.dataIndex];return'<b>'+b.label+'</b><br>'+ttFmt(b)}},legend:{show:false},series:[{type:'pie',radius:['25%','58%'],center:['50%','55%'],itemStyle:{borderRadius:4,borderColor:'#fff',borderWidth:2},label:{show:true,formatter:function(p){return p.value>0?p.name+'\n'+p.value:''},fontSize:9},data:buckets.filter(b=>b.count>0).map(b=>({name:b.label,value:b.count}))}]});
+  } else if(m==='barByNode'){
+    const nodeNames=[...new Set(globalStatsFlat.map(n=>n.nodeName))];
+    const nodeBuckets={};nodeNames.forEach(n=>{nodeBuckets[n]=buckets.map(()=>0)});
+    statsF.forEach(x=>{
+      const c=x.items_count||0;
+      const nn=x._nodeName;if(!nn||!nodeBuckets[nn])return;
+      for(let i=0;i<buckets.length;i++){
+        const lo=i*10,hi=(i+1)*10;
+        const loVal=maxItems*lo/100,hiVal=maxItems*hi/100;
+        if(i===buckets.length-1?c>=loVal&&c<=hiVal:c>=loVal&&c<hiVal){nodeBuckets[nn][i]++;break}
+      }
+    });
+    const series=nodeNames.map((n,ni)=>({name:n,type:'bar',data:nodeBuckets[n],barMaxWidth:36,itemStyle:{color:REPLICA_COLORS[ni%REPLICA_COLORS.length]}}));
+    ch.setOption({title:{text:'Index Size Distribution by Item Count (By Node)',subtext:'Largest index = 100% ('+fmtCompact(maxItems)+' items)',left:'center',textStyle:{fontSize:12},subtextStyle:{fontSize:10}},tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:function(p){if(!p.length)return'';let h='<b>'+p[0].axisValue+'</b><br>';let total=0;p.filter(x=>x.value>0).forEach(x=>{h+=x.marker+' '+x.seriesName+': '+x.value+'<br>';total+=x.value});h+='<b>Total: '+total+'</b>';return h}},legend:{show:nodeNames.length<=10,bottom:0,textStyle:{fontSize:9}},grid:{left:10,right:10,top:50,bottom:nodeNames.length<=10?30:5,containLabel:true},xAxis:{type:'category',data:buckets.map(b=>b.label),axisLabel:{fontSize:10,interval:0,rotate:0}},yAxis:{type:'value',axisLabel:{fontSize:10},minInterval:1,name:'# of Indexes',nameTextStyle:{fontSize:10}},series});
   } else {
     ch.setOption({title:{text:'Index Size Distribution by Item Count',subtext:'Largest index = 100% ('+fmtCompact(maxItems)+' items)',left:'center',textStyle:{fontSize:12},subtextStyle:{fontSize:10}},tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:function(p){if(!p.length||!p[0])return'';const b=buckets[p[0].dataIndex];return'<b>'+b.label+'</b><br>'+ttFmt(b)}},grid:{left:10,right:10,top:50,bottom:5,containLabel:true},xAxis:{type:'category',data:buckets.map(b=>b.label),axisLabel:{fontSize:10,interval:0,rotate:0}},yAxis:{type:'value',axisLabel:{fontSize:10},minInterval:1,name:'# of Indexes',nameTextStyle:{fontSize:10}},series:[{type:'bar',data:buckets.map(b=>({value:b.count,itemStyle:{color:b.count>0?'#3b82f6':'#e5e7eb'}})),barMaxWidth:36,label:{show:true,position:'top',fontSize:10,formatter:p=>p.value>0?p.value:''}}]});
   }
 }
 function switchItemDistMode(mode){
+  document.getElementById('item-dist-barnode-btn').classList.toggle('btn-active',mode==='barByNode');
   document.getElementById('item-dist-bar-btn').classList.toggle('btn-active',mode==='bar');
   document.getElementById('item-dist-pie-btn').classList.toggle('btn-active',mode==='pie');
   if(itemDistStatsF)renderItemDistChart(itemDistStatsF,mode);
