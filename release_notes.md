@@ -1,5 +1,36 @@
 # Release Notes
 
+## v2.0.1 (2026-03-10)
+
+### Issues Fixed
+
+- **#27 — Clarify Disk Size vs Data Size with footnotes** ([issue](https://github.com/Fujio-Turner/cb_index_tree_map/issues/27)) — Added `*` and `**` annotation markers to all Disk Size and Data Size labels throughout the Stats API, Analysis, and treemap tooltip UIs. Added a Footnotes section at the bottom of the page explaining that Disk Size is compressed on-disk size and Data Size is uncompressed logical size, and that Data > Disk is normal due to Plasma compression. Updated Bloat column tooltip to explain values < 1.0x vs > 1.0x.
+
+- **#28 — Improved Index Storage Breakdown chart** ([issue](https://github.com/Fujio-Turner/cb_index_tree_map/issues/28)) — Replaced the "Top Disk Size: Data vs Disk" stacked bar with a new **Index Storage Breakdown** chart showing three segments: Useful Disk (blue), Fragmentation waste (red), and Compression Savings (green dashed). Tooltips now show compression percentage and fragmentation details. Chart instances are properly disposed before re-init to prevent memory leaks.
+
+- **#29 — Improved Disk vs Memory chart** ([issue](https://github.com/Fujio-Turner/cb_index_tree_map/issues/29)) — Replaced the stacked "Disk vs In-Memory" bar chart with a grouped bar chart showing **Disk\*** and **Memory** as side-by-side bars. Tooltips now include resident %, records in memory, and records on disk. Chart instances are properly disposed before re-init.
+
+- **#30 — Color-coded node badges in Analysis tab tables** ([issue](https://github.com/Fujio-Turner/cb_index_tree_map/issues/30)) — Node names in the Analysis tab's Top/Bottom leaderboard tables, Never Scanned table, and Insight Detail Modal now display as color-coded badges (matching the replica color scheme) instead of plain text. Added `buildNodeColors()` and `nodeBadge()` helper functions with a persistent `globalNodeColors` map.
+
+- **#31 — Removed per-node Cache Hit and Scan Latency bar charts from Stats API tab** ([issue](https://github.com/Fujio-Turner/cb_index_tree_map/issues/31)) — Removed the Cache Hit % and Avg Scan Latency bar charts that appeared below each per-node treemap in the Stats API tab, simplifying the layout.
+
+### New Features
+
+- **Bar By Node view for Item Count Distribution** — Added a "Bar By Node" toggle to the Index Item Count Distribution chart in the Analysis tab, showing a stacked bar chart with per-node breakdown across percentile buckets.
+
+- **Filter dropdown index counts** — Bucket, Scope, Collection, and Scan filter dropdowns now show the count of unique indexes at each level (e.g., `my_bucket (42)`). Scan filter shows counts for scanned vs never-scanned.
+
+### UX Improvements
+
+- Updated version badge to v2.0.1.
+
+### Stats
+
+- **Files changed:** 1 (`index.html`)
+- **Lines:** +72 / −36
+
+---
+
 ## v2.0.0 (2026-03-08)
 
 ### New Features
