@@ -180,15 +180,24 @@
 
 <script>
 // ===== GLOBAL STATE =====
-let globalSystemFlat=[],globalStatsFlat=[],globalReplicaMap={},currentMetric='disk_size',activeCharts=[],chartIndexMaps=[],statsNodeCount=1,insightData={};
+let globalSystemFlat=[],globalStatsFlat=[],globalReplicaMap={},globalNodeColors={},currentMetric='disk_size',activeCharts=[],chartIndexMaps=[],statsNodeCount=1,insightData={};
 
+function buildNodeColors(){
+  globalNodeColors={};
+  const nodeNames=[...new Set(globalStatsFlat.map(n=>n.nodeName))];
+  nodeNames.forEach((n,i)=>{globalNodeColors[n]=replicaColor(i+1)});
+}
+function nodeBadge(nodeName){
+  if(!nodeName)return'—';
+  const bg=globalNodeColors[nodeName];
+  if(!bg)return nodeName;
+  return`<span class="badge badge-sm text-white font-bold" style="background:${bg};border-color:${bg}">${nodeName}</span>`;
+}
 function nodeCountBadges(items){
   const counts={};
   items.forEach(x=>{if(x._nodeName){counts[x._nodeName]=(counts[x._nodeName]||0)+1}});
-  const nodeNames=[...new Set(globalStatsFlat.map(n=>n.nodeName))];
-  return nodeNames.filter(n=>counts[n]).map(n=>{
-    const ni=nodeNames.indexOf(n)+1;
-    const bg=replicaColor(ni);
+  return Object.keys(globalNodeColors).filter(n=>counts[n]).map(n=>{
+    const bg=globalNodeColors[n];
     return`<span class="tooltip tooltip-bottom" data-tip="${n}"><span class="badge badge-sm text-white font-bold" style="background:${bg};border-color:${bg}">${counts[n]}</span></span>`;
   }).join(' ');
 }
@@ -202,7 +211,7 @@ function showInsightModal(key,limit){
   document.getElementById('insight-modal-desc').textContent=d.desc;
   const items=d.items.slice(0,max);
   let h=`<table class="table table-xs table-zebra w-full"><thead><tr class="bg-base-200"><th class="w-10">#</th><th>Index</th><th>Node</th><th>Bucket</th><th>Scope</th><th class="text-right">${d.colLabel}</th></tr></thead><tbody>`;
-  items.forEach((x,i)=>{h+=`<tr><td class="font-mono text-xs font-bold">${i+1}</td><td class="font-semibold">${x.name}${x._replicaTotal>1?replicaBadge(x):''}</td><td class="text-xs">${x._nodeName||'—'}</td><td>${x.bucket}</td><td>${x.scope}</td><td class="font-mono text-xs text-right">${d.fmtVal(x)}</td></tr>`});
+  items.forEach((x,i)=>{h+=`<tr><td class="font-mono text-xs font-bold">${i+1}</td><td class="font-semibold">${x.name}${x._replicaTotal>1?replicaBadge(x):''}</td><td class="text-xs">${nodeBadge(x._nodeName)}</td><td>${x.bucket}</td><td>${x.scope}</td><td class="font-mono text-xs text-right">${d.fmtVal(x)}</td></tr>`});
   h+='</tbody></table>';
   if(d.items.length>max)h+=`<p class="text-xs text-base-content/40 mt-2 text-center">Showing top ${max} of ${d.items.length}</p>`;
   document.getElementById('insight-modal-body').innerHTML=h;
@@ -348,6 +357,7 @@ const REPLICA_COLORS=['#3b82f6','#22c55e','#f59e0b','#ef4444','#8b5cf6','#ec4899
 function replicaColor(i){return REPLICA_COLORS[(i-1)%REPLICA_COLORS.length]}
 function buildReplicaMap(){
   globalReplicaMap={};
+  buildNodeColors();
   globalStatsFlat.forEach(node=>{
     node.flat.forEach(idx=>{
       if(!globalReplicaMap[idx.fullKey])globalReplicaMap[idx.fullKey]=[];
@@ -902,7 +912,7 @@ if(statsF.length){
     const iKey='metric_'+m.key;
     insightData[iKey]={title:m.label+' — All Indexes',desc:`Sorted ${m.desc?'highest':'lowest'} first. Showing all matching indexes.`,colLabel:m.label.split(' ').slice(1).join(' '),items:allSorted,fmtVal:x=>m.fmt(x[m.key])};
     html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center gap-2 mb-2"><h3 class="font-bold text-sm">${m.label}</h3>${nodeCountBadges(sorted)}</div><table class="table table-xs"><thead><tr class="bg-base-200"><th>#</th><th>Index</th><th>Node</th><th>Bucket</th><th class="text-right">${m.label.split(' ').slice(1).join(' ')}</th></tr></thead><tbody>`;
-    sorted.forEach((item,i)=>{html+=`<tr class="${rankClass(i)}"><td><span class="font-mono text-xs font-bold">${i+1}</span></td><td class="font-semibold">${item.name}${item._replicaTotal>1?replicaBadge(item):''}</td><td class="text-xs">${item._nodeName||'—'}</td><td>${item.bucket}</td><td class="font-mono text-xs text-right">${m.fmt(item[m.key])}</td></tr>`});
+    sorted.forEach((item,i)=>{html+=`<tr class="${rankClass(i)}"><td><span class="font-mono text-xs font-bold">${i+1}</span></td><td class="font-semibold">${item.name}${item._replicaTotal>1?replicaBadge(item):''}</td><td class="text-xs">${nodeBadge(item._nodeName)}</td><td>${item.bucket}</td><td class="font-mono text-xs text-right">${m.fmt(item[m.key])}</td></tr>`});
     html+=`</tbody></table>`;
     if(allSorted.length>10)html+=`<div class="flex gap-2 justify-center mt-2"><button class="btn btn-ghost btn-xs text-[10px]" onclick="showInsightModal('${iKey}',25)">Show more (25) →</button><button class="btn btn-ghost btn-xs text-[10px]" onclick="showInsightModal('${iKey}',100)">Show more (100) →</button>${allSorted.length>100?`<button class="btn btn-ghost btn-xs text-[10px]" onclick="showInsightModal('${iKey}',${allSorted.length})">Show all (${allSorted.length}) →</button>`:''}</div>`;
     html+=`</div></div>`;
@@ -913,7 +923,7 @@ if(statsF.length){
   if(never.length){
     never.sort((a,b)=>(b.disk_size||0)-(a.disk_size||0));
     html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center gap-2 mb-2"><h3 class="font-bold text-sm">Never Scanned Indexes (${never.length})</h3>${nodeCountBadges(never)}</div><p class="text-xs text-base-content/50 mb-2">These indexes consume disk but have never been queried. Consider dropping them.</p><div class="overflow-y-auto max-h-[400px]"><table class="table table-xs table-pin-rows"><thead><tr class="bg-base-200"><th>Index</th><th>Node</th><th>Bucket</th><th>Scope</th><th class="text-right">Disk</th></tr></thead><tbody>`;
-    never.forEach(x=>{html+=`<tr><td class="font-semibold">${x.name}${x._replicaTotal>1?replicaBadge(x):''}</td><td class="text-xs">${x._nodeName||'—'}</td><td>${x.bucket}</td><td>${x.scope}</td><td class="font-mono text-xs text-right">${fmt(x.disk_size)}</td></tr>`});
+    never.forEach(x=>{html+=`<tr><td class="font-semibold">${x.name}${x._replicaTotal>1?replicaBadge(x):''}</td><td class="text-xs">${nodeBadge(x._nodeName)}</td><td>${x.bucket}</td><td>${x.scope}</td><td class="font-mono text-xs text-right">${fmt(x.disk_size)}</td></tr>`});
     html+=`</tbody></table></div></div></div>`;
   }
 }
