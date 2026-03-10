@@ -1204,9 +1204,8 @@ async function loadTOON(){
 }
 
 function buildResponseSchema(sampleNodeKey,isObfuscated){
-  const idDesc=isObfuscated?'hashId':'fullKey';
   return{
-    nodes:{[sampleNodeKey]:[`<${idDesc}>,<bucket>,<scope>,<collection>,<index>,<size>,<memoryUsed>,<itemsCount>,<requests>,<replicaIndex>,<replicaTotal>,<inMemoryPercent>,<fragPercent>,<cacheHitPercent>`]},
+    nodes:{[sampleNodeKey]:[`<bucket>,<scope>,<collection>,<index>,<size>,<memoryUsed>,<itemsCount>,<requests>,<replicaIndex>,<replicaTotal>,<inMemoryPercent>,<fragPercent>,<cacheHitPercent>`]},
     description:'Explain WHY this arrangement is better. Reference specific indexes, buckets, and nodes by their id/name from the input. Explain what was moved and why it improves balance.',
     _meta:{nodeCount:0,totalIndexes:0}
   };
@@ -1238,7 +1237,7 @@ function buildHashedTopology(){
       lookup[cHash]={type:'collection',value:idx.collection};
       lookup[nHash]={type:'index',value:idx.name};
       return{
-        id:fullHash,bucket:bHash,scope:sHash,collection:cHash,index:nHash,
+        bucket:bHash,scope:sHash,collection:cHash,index:nHash,
         size:idx.disk_size||0,memoryUsed:idx.memory_used||0,itemsCount:idx.items_count||0,
         requests:idx.num_requests||0,replicaIndex:rIdx,replicaTotal:rNodes.length,
         inMemoryPercent:idx.resident_percent!=null?idx.resident_percent:100,
@@ -1251,8 +1250,8 @@ function buildHashedTopology(){
   aiNodeHashLookup=nodeLookup;
   const sampleNode=Object.keys(topo.nodes)[0]||'nodeHash';
   topo._meta={nodeCount:filtered.length,totalIndexes:filtered.reduce((s,n)=>s+n.flat.length,0),generatedAt:new Date().toISOString()};
-  topo._instructions_json='Rearrange indexes across nodes for optimal balance. Balance by: size, memory, requests, bucket/scope/collection diversity. Replicas of the same index (same id) MUST be on different nodes. Prefer not moving very large indexes unless it significantly improves balance. Return your response as JSON matching _response_schema exactly. Each index entry MUST be a plain CSV string (e.g. "id,bucket,scope,collection,index,0,0,0,0,1,1,100,0,0") — do NOT wrap the string in extra quotes or escape quotes within it. In the "description" field, explain WHY this arrangement is better — reference specific index ids, bucket hashes, and node hashes from the input.';
-  topo._instructions_toon='This input is in TOON format (Token-Oriented Object Notation, see toonformat.dev). Each node key has a typed array header like "nodeHash"[count]{field1,field2,...}: followed by CSV rows matching that header. Rearrange indexes across nodes for optimal balance. Balance by: size, memory, requests, bucket/scope/collection diversity. Replicas of the same index (same id) MUST be on different nodes. Prefer not moving very large indexes unless it significantly improves balance. Return your response as JSON matching _response_schema exactly. Each index entry MUST be a plain CSV string (e.g. "id,bucket,scope,collection,index,0,0,0,0,1,1,100,0,0") — do NOT wrap the string in extra quotes or escape quotes within it. In the "description" field, explain WHY this arrangement is better — reference specific index ids, bucket hashes, and node hashes from the input.';
+  topo._instructions_json='Rearrange indexes across nodes for optimal balance. Balance by: size, memory, requests, bucket/scope/collection diversity. Replicas of the same index (same bucket+scope+collection+index) MUST be on different nodes. Prefer not moving very large indexes unless it significantly improves balance. Return your response as JSON matching _response_schema exactly. Each index entry MUST be a plain CSV string (e.g. "bucket,scope,collection,index,0,0,0,0,1,1,100,0,0") — do NOT wrap the string in extra quotes or escape quotes within it. In the "description" field, explain WHY this arrangement is better — reference specific index ids, bucket hashes, and node hashes from the input.';
+  topo._instructions_toon='This input is in TOON format (Token-Oriented Object Notation, see toonformat.dev). Each node key has a typed array header like "nodeHash"[count]{field1,field2,...}: followed by CSV rows matching that header. Rearrange indexes across nodes for optimal balance. Balance by: size, memory, requests, bucket/scope/collection diversity. Replicas of the same index (same bucket+scope+collection+index) MUST be on different nodes. Prefer not moving very large indexes unless it significantly improves balance. Return your response as JSON matching _response_schema exactly. Each index entry MUST be a plain CSV string (e.g. "bucket,scope,collection,index,0,0,0,0,1,1,100,0,0") — do NOT wrap the string in extra quotes or escape quotes within it. In the "description" field, explain WHY this arrangement is better — reference specific index ids, bucket hashes, and node hashes from the input.';
   topo._response_schema=buildResponseSchema(sampleNode,true);
   return topo;
 }
@@ -1268,7 +1267,7 @@ function buildPlainTopology(){
       const rNodes=globalReplicaMap[rKey]||[node.nodeName];
       const rIdx=rNodes.indexOf(node.nodeName)+1;
       return{
-        id:idx.fullKey,bucket:idx.bucket,scope:idx.scope,collection:idx.collection,index:idx.name,
+        bucket:idx.bucket,scope:idx.scope,collection:idx.collection,index:idx.name,
         size:idx.disk_size||0,memoryUsed:idx.memory_used||0,itemsCount:idx.items_count||0,
         requests:idx.num_requests||0,replicaIndex:rIdx,replicaTotal:rNodes.length,
         inMemoryPercent:idx.resident_percent!=null?idx.resident_percent:100,
@@ -1278,8 +1277,8 @@ function buildPlainTopology(){
   });
   const sampleNode=Object.keys(topo.nodes)[0]||'nodeName';
   topo._meta={nodeCount:filtered.length,totalIndexes:filtered.reduce((s,n)=>s+n.flat.length,0),generatedAt:new Date().toISOString()};
-  topo._instructions_json='Rearrange indexes across nodes for optimal balance. Balance by: size, memory, requests, bucket/scope/collection diversity. Replicas of the same index (same id) MUST be on different nodes. Prefer not moving very large indexes unless it significantly improves balance. Return your response as JSON matching _response_schema exactly. Each index entry MUST be a plain CSV string (e.g. "id,bucket,scope,collection,index,0,0,0,0,1,1,100,0,0") — do NOT wrap the string in extra quotes or escape quotes within it. In the "description" field, explain WHY this arrangement is better — reference specific index names, buckets, and nodes.';
-  topo._instructions_toon='This input is in TOON format (Token-Oriented Object Notation, see toonformat.dev). Each node key has a typed array header like "nodeName"[count]{field1,field2,...}: followed by CSV rows matching that header. Rearrange indexes across nodes for optimal balance. Balance by: size, memory, requests, bucket/scope/collection diversity. Replicas of the same index (same id) MUST be on different nodes. Prefer not moving very large indexes unless it significantly improves balance. Return your response as JSON matching _response_schema exactly. Each index entry MUST be a plain CSV string (e.g. "id,bucket,scope,collection,index,0,0,0,0,1,1,100,0,0") — do NOT wrap the string in extra quotes or escape quotes within it. In the "description" field, explain WHY this arrangement is better — reference specific index names, buckets, and nodes.';
+  topo._instructions_json='Rearrange indexes across nodes for optimal balance. Balance by: size, memory, requests, bucket/scope/collection diversity. Replicas of the same index (same bucket+scope+collection+index) MUST be on different nodes. Prefer not moving very large indexes unless it significantly improves balance. Return your response as JSON matching _response_schema exactly. Each index entry MUST be a plain CSV string (e.g. "bucket,scope,collection,index,0,0,0,0,1,1,100,0,0") — do NOT wrap the string in extra quotes or escape quotes within it. In the "description" field, explain WHY this arrangement is better — reference specific index names, buckets, and nodes.';
+  topo._instructions_toon='This input is in TOON format (Token-Oriented Object Notation, see toonformat.dev). Each node key has a typed array header like "nodeName"[count]{field1,field2,...}: followed by CSV rows matching that header. Rearrange indexes across nodes for optimal balance. Balance by: size, memory, requests, bucket/scope/collection diversity. Replicas of the same index (same bucket+scope+collection+index) MUST be on different nodes. Prefer not moving very large indexes unless it significantly improves balance. Return your response as JSON matching _response_schema exactly. Each index entry MUST be a plain CSV string (e.g. "bucket,scope,collection,index,0,0,0,0,1,1,100,0,0") — do NOT wrap the string in extra quotes or escape quotes within it. In the "description" field, explain WHY this arrangement is better — reference specific index names, buckets, and nodes.';
   topo._response_schema=buildResponseSchema(sampleNode,false);
   return topo;
 }
@@ -1858,11 +1857,21 @@ function loadAIPlan(){
     indexes.forEach(entry=>{
       let id;
       if(typeof entry==='string'){
-        id=entry.split(',')[0];
+        const parts=entry.split(',');
+        if(parts.length>=4){
+          id=parts[0]+':'+parts[1]+':'+parts[2]+':'+parts[3];
+        }else{
+          id=parts[0].replace(/^"|"$/g,'');
+        }
       }else{
-        id=entry.id||entry.name||entry.fullHash;
+        if(entry.bucket&&entry.index){
+          id=(entry.bucket||'')+ ':'+(entry.scope||'')+ ':'+(entry.collection||'')+':'+(entry.index||entry.name||'');
+        }else{
+          id=entry.id||entry.name||entry.fullHash;
+        }
       }
       if(!id){unresolved++;return}
+      id=id.replace(/^"|"$/g,'');
       const real=currentById[id];
       if(!real){unresolved++;return}
       resolved++;
