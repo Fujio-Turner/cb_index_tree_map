@@ -206,6 +206,12 @@ docker compose up --build    # rebuild after updating index.html
 
 ---
 
+## 📦 Current Release
+
+**v2.0.1** — See [release notes](release_notes.md) for details.
+
+---
+
 ## 📄 License
 
 See [LICENSE](LICENSE) for details.
