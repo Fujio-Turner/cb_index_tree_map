@@ -695,17 +695,9 @@ ${node.indexer?`<div class="stats stats-horizontal shadow-sm mb-3 w-full"><div c
 <span class="text-[10px] text-base-content/40 ml-1">Click highlights table row · Use buttons to zoom & pan</span>
 </div>
 <div class="treemap-viewport"><div id="ch-${i}" class="chart-box"></div></div>
-<div class="grid grid-cols-2 gap-0 border-t border-base-200"><div id="bar-cache-${i}" class="chart-half border-r border-base-200"></div><div id="bar-latency-${i}" class="chart-half"></div></div>
 ${makeTable(i,filtered)}</div>`;
 c.appendChild(sec);
 makeTreemap('ch-'+i,buildTree(filtered,true),true,node.indexer,i);
-// Cache hit bar
-const sortedCache=[...filtered].sort((a,b)=>a.cache_hit_percent-b.cache_hit_percent).slice(0,15);
-makeBar('bar-cache-'+i,'Cache Hit % (lowest first)',sortedCache.map(x=>x.name),sortedCache.map(x=>({value:x.cache_hit_percent,itemStyle:{color:x.cache_hit_percent<60?'#ef4444':x.cache_hit_percent<90?'#f59e0b':'#22c55e'}})),'#3b82f6',v=>v+'%');
-// Latency bar
-const sortedLat=[...filtered].filter(x=>x.avg_scan_latency>0).sort((a,b)=>b.avg_scan_latency-a.avg_scan_latency).slice(0,15);
-if(sortedLat.length)makeBar('bar-latency-'+i,'Avg Scan Latency (highest first)',sortedLat.map(x=>x.name),sortedLat.map(x=>({value:x.avg_scan_latency,itemStyle:{color:x.avg_scan_latency/1e6>10?'#ef4444':x.avg_scan_latency/1e6>1?'#f59e0b':'#22c55e'}})),'#f59e0b',fmtNs);
-else{const el=document.getElementById('bar-latency-'+i);if(el)el.innerHTML='<div class="flex items-center justify-center h-full text-base-content/30 text-sm">No scan latency data</div>'}
 })}
 
 // ===== ANALYSIS TAB =====
