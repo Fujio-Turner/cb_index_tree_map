@@ -1,5 +1,17 @@
 # Release Notes
 
+## v2.1.0 (2026-03-10)
+
+### New Features
+
+- **⭐ Priority Index(es)** — In the Index Placement Optimizer tab, users can now mark specific indexes as "priority" via checkboxes in the index table. Priority indexes are placed on nodes with the **least memory load** so that more of the index stays resident in RAM, reducing disk I/O and improving query latency. Priority selections are respected by both **Plan A** (built-in greedy algorithm adds a memory-based penalty to steer priority indexes to lighter nodes) and **Plan B** (AI export includes priority indexes in `_meta.priorityIndexes` with instructions to place them on low-memory nodes). The moves table shows "Priority — placed for best memory" reasoning for any prioritized index that was moved.
+
+### UX Improvements
+
+- Updated version badge to v2.1.0.
+
+---
+
 ## v2.0.1 (2026-03-10)
 
 ### Issues Fixed
