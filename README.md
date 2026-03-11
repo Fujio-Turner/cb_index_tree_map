@@ -71,6 +71,7 @@ Both plans show you a **before → after Lumpiness Score comparison**, a detaile
 ### 💃 Index Placement Optimizer Tab *(Beta)*
 - **Plan A: Built-in Rebalance** — Greedy algorithm computes an optimized placement and generates `ALTER INDEX` statements
 - **Plan B: AI-Assisted Rebalance** — Export topology with obfuscated hashes + TOON token optimization, send to any AI, import the result back. The tool de-hashes, scores, and generates ALTER INDEX statements.
+- **⭐ Priority Indexes** — Mark specific indexes as "priority" so the optimizer places them on nodes with the least memory load, maximizing the chance they stay fully resident in RAM. Priority selections are included in both Plan A (built-in) and Plan B (AI) exports. The moves table shows "Priority — placed for best memory" reasoning for any prioritized index that was moved.
 - **Lumpiness Score: Before → After** — Radial gauge comparison showing how much the rebalance improves distribution
 - **Proposed Moves table** with source → destination nodes, disk sizes, and reasoning
 - **AI Reasoning display** — Auto-formatted with color-coded node badges, bold metrics, and de-obfuscated names
@@ -208,7 +209,7 @@ docker compose up --build    # rebuild after updating index.html
 
 ## 📦 Current Release
 
-**v2.0.1** — See [release notes](release_notes.md) for details.
+**v2.1.0** — See [release notes](release_notes.md) for details.
 
 ---
 
