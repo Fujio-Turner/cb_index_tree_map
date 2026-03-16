@@ -8,6 +8,7 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/echarts-wordcloud@2/dist/echarts-wordcloud.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@leeoniya/ufuzzy@1/dist/uFuzzy.iife.min.js"></script>
 <style>
   .chart-box{width:100%;height:420px}
   .chart-half{width:100%;height:300px}
@@ -55,6 +56,10 @@
         <input type="checkbox" id="f-unique" class="checkbox checkbox-xs checkbox-primary" onchange="applyFilters()">
         <span class="text-xs font-semibold">Unique Only</span>
       </label>
+    </div>
+    <div class="tooltip tooltip-bottom relative" data-tip="Comma-separated field names to match in index keys. Supports wildcards: * matches any characters.&#10;&#10;Examples:&#10;  city,zip — exact field names&#10;  city_*  — fields starting with city_&#10;  *ipCo*  — fields containing ipCo&#10;  addr.*  — nested fields under addr&#10;  *_id,*_type — fields ending with _id or _type">
+      <input type="text" id="f-fields" class="input input-bordered input-xs w-48" placeholder="e.g. city,zip_*" autocomplete="off" oninput="onFieldsInput()" onkeydown="onFieldsKeydown(event)" onblur="setTimeout(()=>hideFieldsAC(),150)" title="Filter by indexed field names (supports wildcards)">
+      <div id="f-fields-ac" class="absolute top-full left-0 z-[100] bg-base-100 border border-base-300 rounded-box shadow-lg mt-1 w-64 max-h-48 overflow-y-auto hidden"></div>
     </div>
     <button class="btn btn-ghost btn-xs text-error" onclick="resetFilters()">Reset</button>
     <span id="filter-count" class="text-xs text-base-content/40"></span>
@@ -288,13 +293,85 @@ function rankClass(i){return i===0?'bg-warning/30':i===1?'bg-base-200':i===2?'bg
 
 // ===== FILTERS =====
 function getSelectedNodes(){const cbs=document.querySelectorAll('#f-node-list input[type=checkbox]:not(#f-node-all)');const checked=[...cbs].filter(c=>c.checked).map(c=>c.value);const all=document.getElementById('f-node-all');if(!cbs.length||!all||(all&&all.checked))return[];return checked}
-function getFilters(){return{nodes:getSelectedNodes(),bucket:document.getElementById('f-bucket').value,scope:document.getElementById('f-scope').value,collection:document.getElementById('f-collection').value,index:document.getElementById('f-index').value,scan:document.getElementById('f-scan').value,uniqueOnly:document.getElementById('f-unique').checked}}
+function getFilters(){return{nodes:getSelectedNodes(),bucket:document.getElementById('f-bucket').value,scope:document.getElementById('f-scope').value,collection:document.getElementById('f-collection').value,index:document.getElementById('f-index').value,scan:document.getElementById('f-scan').value,uniqueOnly:document.getElementById('f-unique').checked,fields:document.getElementById('f-fields').value.trim()}}
 function getScanTime(item){if(item.last_known_scan_time)return item.last_known_scan_time;const key=item.bucket+':'+item.scope+':'+item.collection+':'+item.name;for(const node of globalStatsFlat){const found=node.flat.find(s=>s.fullKey===key||s.bucket+':'+s.scope+':'+s.collection+':'+s.name===key);if(found&&found.last_known_scan_time)return found.last_known_scan_time}return 0}
-function matchFilter(item,f){if(f.scan){const scanTime=getScanTime(item);const neverScanned=!scanTime||scanTime===0;if(f.scan==='exclude-never'&&neverScanned)return false;if(f.scan==='only-never'&&!neverScanned)return false}return(!f.bucket||item.bucket===f.bucket)&&(!f.scope||item.scope===f.scope)&&(!f.collection||item.collection===f.collection)&&(!f.index||item.name===f.index)}
+function wildcardMatch(pattern,str){const re=new RegExp('^'+pattern.replace(/[-\/\\^$+?.()|[\]{}]/g,'\\$&').replace(/\*/g,'.*')+'$','i');return re.test(str)}
+function getItemFields(item){if(item.keys&&item.keys.length)return getIndexFields(item.keys);const key=item.bucket+':'+item.scope+':'+item.collection+':'+item.name;const sys=globalSystemFlat.find(s=>s.fullKey===key||s.bucket+':'+s.scope+':'+s.collection+':'+s.name===key);if(sys&&sys.keys)return getIndexFields(sys.keys);return[]}
+function matchFieldsFilter(item,fieldPatterns){const fields=getItemFields(item);if(!fields.length)return false;return fieldPatterns.every(p=>fields.some(f=>wildcardMatch(p,f)))}
+function matchFilter(item,f){if(f.scan){const scanTime=getScanTime(item);const neverScanned=!scanTime||scanTime===0;if(f.scan==='exclude-never'&&neverScanned)return false;if(f.scan==='only-never'&&!neverScanned)return false}if(f.fields){const patterns=f.fields.split(',').map(s=>s.trim()).filter(Boolean);if(patterns.length&&!matchFieldsFilter(item,patterns))return false}return(!f.bucket||item.bucket===f.bucket)&&(!f.scope||item.scope===f.scope)&&(!f.collection||item.collection===f.collection)&&(!f.index||item.name===f.index)}
+
+// ===== FIELD AUTOCOMPLETE (uFuzzy) =====
+let fieldACIndex=-1;
+const uf=new uFuzzy({intraMode:1});
+let fieldHaystack=[],fieldCountMap={};
+function rebuildFieldHaystack(){
+  const counts={};
+  const all=[...globalSystemFlat,...globalStatsFlat.flatMap(n=>n.flat)];
+  all.forEach(item=>{
+    const fields=getItemFields(item);
+    fields.forEach(f=>{counts[f]=(counts[f]||0)+1});
+  });
+  fieldCountMap=counts;
+  fieldHaystack=Object.keys(counts).sort((a,b)=>counts[b]-counts[a]);
+}
+function getFieldsACToken(){
+  const input=document.getElementById('f-fields');
+  const val=input.value,pos=input.selectionStart||val.length;
+  const before=val.substring(0,pos);
+  const lastComma=before.lastIndexOf(',');
+  return{token:before.substring(lastComma+1).trim(),start:lastComma+1,pos};
+}
+function onFieldsInput(){
+  const{token}=getFieldsACToken();
+  const ac=document.getElementById('f-fields-ac');
+  if(!token){ac.classList.add('hidden');fieldACIndex=-1;return}
+  if(!fieldHaystack.length)rebuildFieldHaystack();
+  const[idxs,info,order]=uf.search(fieldHaystack,token);
+  if(!idxs||!idxs.length){ac.classList.add('hidden');fieldACIndex=-1;return}
+  fieldACIndex=-1;
+  let rows='';
+  const limit=Math.min((order||idxs).length,20);
+  for(let i=0;i<limit;i++){
+    const infoIdx=order?order[i]:i;
+    const field=fieldHaystack[info?info.idx[infoIdx]:idxs[infoIdx]];
+    const highlighted=info&&info.ranges[infoIdx]?uFuzzy.highlight(field,info.ranges[infoIdx],(part,matched)=>matched?'<span class="text-primary font-bold">'+part+'</span>':part):field;
+    rows+=`<tr class="hover:bg-primary/10 cursor-pointer ac-row" data-field="${field}" onmousedown="pickFieldAC('${field.replace(/'/g,"\\'")}')" data-idx="${i}"><td class="text-xs font-mono">${highlighted}</td><td class="text-xs text-right text-base-content/50">${fieldCountMap[field]||0}</td></tr>`;
+  }
+  ac.innerHTML='<table class="table table-xs w-full"><thead><tr class="bg-base-200"><th class="text-[10px]">Field</th><th class="text-[10px] text-right">Indexes</th></tr></thead><tbody>'+rows+'</tbody></table>';
+  ac.classList.remove('hidden');
+}
+function pickFieldAC(field){
+  const input=document.getElementById('f-fields');
+  const val=input.value,pos=input.selectionStart||val.length;
+  const before=val.substring(0,pos),after=val.substring(pos);
+  const lastComma=before.lastIndexOf(',');
+  const prefix=lastComma>=0?before.substring(0,lastComma+1)+' ':'';
+  input.value=prefix+field+(after.trim()?after:',');
+  input.focus();
+  const newPos=(prefix+field+',').length;
+  input.setSelectionRange(newPos,newPos);
+  hideFieldsAC();
+  applyFilters();
+}
+function hideFieldsAC(){document.getElementById('f-fields-ac').classList.add('hidden');fieldACIndex=-1}
+function onFieldsKeydown(e){
+  const ac=document.getElementById('f-fields-ac');
+  if(ac.classList.contains('hidden')){
+    if(e.key==='Enter'){applyFilters();return}
+    return;
+  }
+  const rows=ac.querySelectorAll('.ac-row');
+  if(e.key==='ArrowDown'){e.preventDefault();fieldACIndex=Math.min(fieldACIndex+1,rows.length-1);updateACHighlight(rows)}
+  else if(e.key==='ArrowUp'){e.preventDefault();fieldACIndex=Math.max(fieldACIndex-1,0);updateACHighlight(rows)}
+  else if(e.key==='Enter'&&fieldACIndex>=0){e.preventDefault();const row=rows[fieldACIndex];if(row)pickFieldAC(row.dataset.field)}
+  else if(e.key==='Escape'){hideFieldsAC()}
+}
+function updateACHighlight(rows){rows.forEach((r,i)=>{r.classList.toggle('bg-primary/20',i===fieldACIndex);if(i===fieldACIndex)r.scrollIntoView({block:'nearest'})})}
+
 function dedup(arr){const seen=new Set();return arr.filter(x=>{const k=x.bucket+':'+x.scope+':'+x.collection+':'+x.name;if(seen.has(k))return false;seen.add(k);return true})}
 function matchNodeFilter(nodeName,f){return!f.nodes.length||f.nodes.includes(nodeName)}
 function getFilteredStats(){const f=getFilters();return globalStatsFlat.filter(n=>matchNodeFilter(n.nodeName,f)).map(n=>({...n,flat:n.flat.filter(x=>matchFilter(x,f))})).filter(n=>n.flat.length>0)}
-function populateFilters(){const all=[...globalSystemFlat,...globalStatsFlat.flatMap(n=>n.flat)];if(!all.length){document.getElementById('filter-bar').classList.add('hidden');return}document.getElementById('filter-bar').classList.remove('hidden');populateNodeFilter();cascadeFilters()}
+function populateFilters(){const all=[...globalSystemFlat,...globalStatsFlat.flatMap(n=>n.flat)];if(!all.length){document.getElementById('filter-bar').classList.add('hidden');return}document.getElementById('filter-bar').classList.remove('hidden');populateNodeFilter();cascadeFilters();rebuildFieldHaystack()}
 function populateNodeFilter(){
   const nodeNames=[...new Set(globalStatsFlat.map(n=>n.nodeName))].sort();
   const list=document.getElementById('f-node-list'),label=document.getElementById('f-node-label');
@@ -345,8 +422,8 @@ function cascadeFilters(){
   if(curC!==validC)fc.value=validC;
   if(curI!==validI)fi.value=validI;
 }
-function resetFilters(){['f-bucket','f-scope','f-collection','f-index','f-scan'].forEach(id=>document.getElementById(id).value='');document.getElementById('f-unique').checked=false;const allCb=document.getElementById('f-node-all');if(allCb){allCb.checked=true;toggleAllNodes(allCb)}applyFilters()}
-function applyFilters(){cascadeFilters();renderTreemapView();renderStatsView();if(!document.getElementById('panel-analysis').classList.contains('hidden'))renderAnalysis();if(!document.getElementById('panel-moveit').classList.contains('hidden'))renderMoveIt();const f=getFilters();let a=[f.bucket,f.scope,f.collection,f.index,f.scan].filter(Boolean).length;if(f.nodes.length)a++;if(f.uniqueOnly)a++;document.getElementById('filter-count').textContent=a?`(${a} active)`:''}
+function resetFilters(){['f-bucket','f-scope','f-collection','f-index','f-scan'].forEach(id=>document.getElementById(id).value='');document.getElementById('f-unique').checked=false;document.getElementById('f-fields').value='';const allCb=document.getElementById('f-node-all');if(allCb){allCb.checked=true;toggleAllNodes(allCb)}applyFilters()}
+function applyFilters(){cascadeFilters();renderTreemapView();renderStatsView();if(!document.getElementById('panel-analysis').classList.contains('hidden'))renderAnalysis();if(!document.getElementById('panel-moveit').classList.contains('hidden'))renderMoveIt();const f=getFilters();let a=[f.bucket,f.scope,f.collection,f.index,f.scan,f.fields].filter(Boolean).length;if(f.nodes.length)a++;if(f.uniqueOnly)a++;document.getElementById('filter-count').textContent=a?`(${a} active)`:''}
 
 function addStatsNode(){statsNodeCount++;const c=document.getElementById('stats-nodes'),d=document.createElement('div');d.className='stats-node-input mb-2';const bg=REPLICA_COLORS[(statsNodeCount-1)%REPLICA_COLORS.length];d.innerHTML=`<div class="flex items-center gap-2 mb-1"><span class="badge badge-sm text-white font-bold" style="background:${bg};border-color:${bg}">Node ${statsNodeCount}:</span><input type="text" class="input input-bordered input-xs w-48 node-name" value="Index Node ${statsNodeCount}"><button class="btn btn-ghost btn-xs text-base-content/50 node-toggle" onclick="toggleNodeTextarea(this)" title="Show/hide JSON">▼</button><button class="btn btn-ghost btn-xs text-error" onclick="this.closest('.stats-node-input').remove()">x</button></div><textarea class="textarea textarea-bordered w-full h-24 font-mono text-xs node-stats-json" placeholder='Paste stats JSON...'></textarea>`;c.appendChild(d);updateNodeLabels()}
 
