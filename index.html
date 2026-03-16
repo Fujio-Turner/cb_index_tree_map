@@ -8,6 +8,7 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/echarts-wordcloud@2/dist/echarts-wordcloud.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@leeoniya/ufuzzy@1/dist/uFuzzy.iife.min.js"></script>
 <style>
   .chart-box{width:100%;height:420px}
   .chart-half{width:100%;height:300px}
@@ -25,7 +26,7 @@
   <div class="flex-1 gap-3">
     <span class="text-xl font-bold text-error">CB Index Treemap</span>
     <span class="text-xs text-base-content/50 hidden sm:inline">Visualize & analyze GSI index sizes, performance & capacity</span>
-    <span class="badge badge-ghost badge-sm text-[10px]">v2.1.0</span>
+    <span class="badge badge-ghost badge-sm text-[10px]">v2.2.0</span>
   </div>
   <div class="flex-none">
     <button class="btn btn-ghost btn-sm gap-1" onclick="openFileManager()"><span id="saved-count" class="badge badge-sm badge-ghost">0</span></button>
@@ -55,6 +56,10 @@
         <input type="checkbox" id="f-unique" class="checkbox checkbox-xs checkbox-primary" onchange="applyFilters()">
         <span class="text-xs font-semibold">Unique Only</span>
       </label>
+    </div>
+    <div class="tooltip tooltip-bottom relative" data-tip="Comma-separated field names to match in index keys. Supports wildcards: * matches any characters.&#10;&#10;Examples:&#10;  city,zip — exact field names&#10;  city_*  — fields starting with city_&#10;  *ipCo*  — fields containing ipCo&#10;  addr.*  — nested fields under addr&#10;  *_id,*_type — fields ending with _id or _type">
+      <input type="text" id="f-fields" class="input input-bordered input-xs w-48" placeholder="e.g. city,zip_*" autocomplete="off" oninput="onFieldsInput()" onkeydown="onFieldsKeydown(event)" onblur="setTimeout(()=>hideFieldsAC(),150)" title="Filter by indexed field names (supports wildcards)">
+      <div id="f-fields-ac" class="absolute top-full left-0 z-[100] bg-base-100 border border-base-300 rounded-box shadow-lg mt-1 w-64 max-h-48 overflow-y-auto hidden"></div>
     </div>
     <button class="btn btn-ghost btn-xs text-error" onclick="resetFilters()">Reset</button>
     <span id="filter-count" class="text-xs text-base-content/40"></span>
@@ -288,12 +293,85 @@ function rankClass(i){return i===0?'bg-warning/30':i===1?'bg-base-200':i===2?'bg
 
 // ===== FILTERS =====
 function getSelectedNodes(){const cbs=document.querySelectorAll('#f-node-list input[type=checkbox]:not(#f-node-all)');const checked=[...cbs].filter(c=>c.checked).map(c=>c.value);const all=document.getElementById('f-node-all');if(!cbs.length||!all||(all&&all.checked))return[];return checked}
-function getFilters(){return{nodes:getSelectedNodes(),bucket:document.getElementById('f-bucket').value,scope:document.getElementById('f-scope').value,collection:document.getElementById('f-collection').value,index:document.getElementById('f-index').value,scan:document.getElementById('f-scan').value,uniqueOnly:document.getElementById('f-unique').checked}}
-function matchFilter(item,f){const neverScanned=!item.last_known_scan_time||item.last_known_scan_time===0;if(f.scan==='exclude-never'&&neverScanned)return false;if(f.scan==='only-never'&&!neverScanned)return false;return(!f.bucket||item.bucket===f.bucket)&&(!f.scope||item.scope===f.scope)&&(!f.collection||item.collection===f.collection)&&(!f.index||item.name===f.index)}
+function getFilters(){return{nodes:getSelectedNodes(),bucket:document.getElementById('f-bucket').value,scope:document.getElementById('f-scope').value,collection:document.getElementById('f-collection').value,index:document.getElementById('f-index').value,scan:document.getElementById('f-scan').value,uniqueOnly:document.getElementById('f-unique').checked,fields:document.getElementById('f-fields').value.trim()}}
+function getScanTime(item){if(item.last_known_scan_time)return item.last_known_scan_time;const key=item.bucket+':'+item.scope+':'+item.collection+':'+item.name;for(const node of globalStatsFlat){const found=node.flat.find(s=>s.fullKey===key||s.bucket+':'+s.scope+':'+s.collection+':'+s.name===key);if(found&&found.last_known_scan_time)return found.last_known_scan_time}return 0}
+function wildcardMatch(pattern,str){const re=new RegExp('^'+pattern.replace(/[-\/\\^$+?.()|[\]{}]/g,'\\$&').replace(/\*/g,'.*')+'$','i');return re.test(str)}
+function getItemFields(item){if(item.keys&&item.keys.length)return getIndexFields(item.keys);const key=item.bucket+':'+item.scope+':'+item.collection+':'+item.name;const sys=globalSystemFlat.find(s=>s.fullKey===key||s.bucket+':'+s.scope+':'+s.collection+':'+s.name===key);if(sys&&sys.keys)return getIndexFields(sys.keys);return[]}
+function matchFieldsFilter(item,fieldPatterns){const fields=getItemFields(item);if(!fields.length)return false;return fieldPatterns.every(p=>fields.some(f=>wildcardMatch(p,f)))}
+function matchFilter(item,f){if(f.scan){const scanTime=getScanTime(item);const neverScanned=!scanTime||scanTime===0;if(f.scan==='exclude-never'&&neverScanned)return false;if(f.scan==='only-never'&&!neverScanned)return false}if(f.fields){const patterns=f.fields.split(',').map(s=>s.trim()).filter(Boolean);if(patterns.length&&!matchFieldsFilter(item,patterns))return false}return(!f.bucket||item.bucket===f.bucket)&&(!f.scope||item.scope===f.scope)&&(!f.collection||item.collection===f.collection)&&(!f.index||item.name===f.index)}
+
+// ===== FIELD AUTOCOMPLETE (uFuzzy) =====
+let fieldACIndex=-1;
+const uf=new uFuzzy({intraMode:1});
+let fieldHaystack=[],fieldCountMap={};
+function rebuildFieldHaystack(){
+  const counts={};
+  const all=[...globalSystemFlat,...globalStatsFlat.flatMap(n=>n.flat)];
+  all.forEach(item=>{
+    const fields=getItemFields(item);
+    fields.forEach(f=>{counts[f]=(counts[f]||0)+1});
+  });
+  fieldCountMap=counts;
+  fieldHaystack=Object.keys(counts).sort((a,b)=>counts[b]-counts[a]);
+}
+function getFieldsACToken(){
+  const input=document.getElementById('f-fields');
+  const val=input.value,pos=input.selectionStart||val.length;
+  const before=val.substring(0,pos);
+  const lastComma=before.lastIndexOf(',');
+  return{token:before.substring(lastComma+1).trim(),start:lastComma+1,pos};
+}
+function onFieldsInput(){
+  const{token}=getFieldsACToken();
+  const ac=document.getElementById('f-fields-ac');
+  if(!token){ac.classList.add('hidden');fieldACIndex=-1;return}
+  if(!fieldHaystack.length)rebuildFieldHaystack();
+  const[idxs,info,order]=uf.search(fieldHaystack,token);
+  if(!idxs||!idxs.length){ac.classList.add('hidden');fieldACIndex=-1;return}
+  fieldACIndex=-1;
+  let rows='';
+  const limit=Math.min((order||idxs).length,20);
+  for(let i=0;i<limit;i++){
+    const infoIdx=order?order[i]:i;
+    const field=fieldHaystack[info?info.idx[infoIdx]:idxs[infoIdx]];
+    const highlighted=info&&info.ranges[infoIdx]?uFuzzy.highlight(field,info.ranges[infoIdx],(part,matched)=>matched?'<span class="text-primary font-bold">'+part+'</span>':part):field;
+    rows+=`<tr class="hover:bg-primary/10 cursor-pointer ac-row" data-field="${field}" onmousedown="pickFieldAC('${field.replace(/'/g,"\\'")}')" data-idx="${i}"><td class="text-xs font-mono">${highlighted}</td><td class="text-xs text-right text-base-content/50">${fieldCountMap[field]||0}</td></tr>`;
+  }
+  ac.innerHTML='<table class="table table-xs w-full"><thead><tr class="bg-base-200"><th class="text-[10px]">Field</th><th class="text-[10px] text-right">Indexes</th></tr></thead><tbody>'+rows+'</tbody></table>';
+  ac.classList.remove('hidden');
+}
+function pickFieldAC(field){
+  const input=document.getElementById('f-fields');
+  const val=input.value,pos=input.selectionStart||val.length;
+  const before=val.substring(0,pos),after=val.substring(pos);
+  const lastComma=before.lastIndexOf(',');
+  const prefix=lastComma>=0?before.substring(0,lastComma+1)+' ':'';
+  input.value=prefix+field+(after.trim()?after:',');
+  input.focus();
+  const newPos=(prefix+field+',').length;
+  input.setSelectionRange(newPos,newPos);
+  hideFieldsAC();
+  applyFilters();
+}
+function hideFieldsAC(){document.getElementById('f-fields-ac').classList.add('hidden');fieldACIndex=-1}
+function onFieldsKeydown(e){
+  const ac=document.getElementById('f-fields-ac');
+  if(ac.classList.contains('hidden')){
+    if(e.key==='Enter'){applyFilters();return}
+    return;
+  }
+  const rows=ac.querySelectorAll('.ac-row');
+  if(e.key==='ArrowDown'){e.preventDefault();fieldACIndex=Math.min(fieldACIndex+1,rows.length-1);updateACHighlight(rows)}
+  else if(e.key==='ArrowUp'){e.preventDefault();fieldACIndex=Math.max(fieldACIndex-1,0);updateACHighlight(rows)}
+  else if(e.key==='Enter'&&fieldACIndex>=0){e.preventDefault();const row=rows[fieldACIndex];if(row)pickFieldAC(row.dataset.field)}
+  else if(e.key==='Escape'){hideFieldsAC()}
+}
+function updateACHighlight(rows){rows.forEach((r,i)=>{r.classList.toggle('bg-primary/20',i===fieldACIndex);if(i===fieldACIndex)r.scrollIntoView({block:'nearest'})})}
+
 function dedup(arr){const seen=new Set();return arr.filter(x=>{const k=x.bucket+':'+x.scope+':'+x.collection+':'+x.name;if(seen.has(k))return false;seen.add(k);return true})}
 function matchNodeFilter(nodeName,f){return!f.nodes.length||f.nodes.includes(nodeName)}
 function getFilteredStats(){const f=getFilters();return globalStatsFlat.filter(n=>matchNodeFilter(n.nodeName,f)).map(n=>({...n,flat:n.flat.filter(x=>matchFilter(x,f))})).filter(n=>n.flat.length>0)}
-function populateFilters(){const all=[...globalSystemFlat,...globalStatsFlat.flatMap(n=>n.flat)];if(!all.length){document.getElementById('filter-bar').classList.add('hidden');return}document.getElementById('filter-bar').classList.remove('hidden');populateNodeFilter();cascadeFilters()}
+function populateFilters(){const all=[...globalSystemFlat,...globalStatsFlat.flatMap(n=>n.flat)];if(!all.length){document.getElementById('filter-bar').classList.add('hidden');return}document.getElementById('filter-bar').classList.remove('hidden');populateNodeFilter();cascadeFilters();rebuildFieldHaystack()}
 function populateNodeFilter(){
   const nodeNames=[...new Set(globalStatsFlat.map(n=>n.nodeName))].sort();
   const list=document.getElementById('f-node-list'),label=document.getElementById('f-node-label');
@@ -336,7 +414,7 @@ function cascadeFilters(){
   // Scan filter: update counts
   const fScan=document.getElementById('f-scan'),curScan=fScan.value;
   const scanPool=idxPool;
-  const neverCount=scanPool.filter(i=>!i.last_known_scan_time||i.last_known_scan_time===0).length;
+  const neverCount=scanPool.filter(i=>{const t=getScanTime(i);return !t||t===0}).length;
   const scannedCount=scanPool.length-neverCount;
   fScan.innerHTML=`<option value=""${curScan===''?' selected':''}>All (${scanPool.length})</option><option value="exclude-never"${curScan==='exclude-never'?' selected':''}>Exclude Never Scanned (${scannedCount})</option><option value="only-never"${curScan==='only-never'?' selected':''}>Only Never Scanned (${neverCount})</option>`;
   // Reset values that are no longer valid
@@ -344,8 +422,8 @@ function cascadeFilters(){
   if(curC!==validC)fc.value=validC;
   if(curI!==validI)fi.value=validI;
 }
-function resetFilters(){['f-bucket','f-scope','f-collection','f-index','f-scan'].forEach(id=>document.getElementById(id).value='');document.getElementById('f-unique').checked=false;const allCb=document.getElementById('f-node-all');if(allCb){allCb.checked=true;toggleAllNodes(allCb)}applyFilters()}
-function applyFilters(){cascadeFilters();renderTreemapView();renderStatsView();if(!document.getElementById('panel-analysis').classList.contains('hidden'))renderAnalysis();if(!document.getElementById('panel-moveit').classList.contains('hidden'))renderMoveIt();const f=getFilters();let a=[f.bucket,f.scope,f.collection,f.index,f.scan].filter(Boolean).length;if(f.nodes.length)a++;if(f.uniqueOnly)a++;document.getElementById('filter-count').textContent=a?`(${a} active)`:''}
+function resetFilters(){['f-bucket','f-scope','f-collection','f-index','f-scan'].forEach(id=>document.getElementById(id).value='');document.getElementById('f-unique').checked=false;document.getElementById('f-fields').value='';const allCb=document.getElementById('f-node-all');if(allCb){allCb.checked=true;toggleAllNodes(allCb)}applyFilters()}
+function applyFilters(){cascadeFilters();renderTreemapView();renderStatsView();if(!document.getElementById('panel-analysis').classList.contains('hidden'))renderAnalysis();if(!document.getElementById('panel-moveit').classList.contains('hidden'))renderMoveIt();const f=getFilters();let a=[f.bucket,f.scope,f.collection,f.index,f.scan,f.fields].filter(Boolean).length;if(f.nodes.length)a++;if(f.uniqueOnly)a++;document.getElementById('filter-count').textContent=a?`(${a} active)`:''}
 
 function addStatsNode(){statsNodeCount++;const c=document.getElementById('stats-nodes'),d=document.createElement('div');d.className='stats-node-input mb-2';const bg=REPLICA_COLORS[(statsNodeCount-1)%REPLICA_COLORS.length];d.innerHTML=`<div class="flex items-center gap-2 mb-1"><span class="badge badge-sm text-white font-bold" style="background:${bg};border-color:${bg}">Node ${statsNodeCount}:</span><input type="text" class="input input-bordered input-xs w-48 node-name" value="Index Node ${statsNodeCount}"><button class="btn btn-ghost btn-xs text-base-content/50 node-toggle" onclick="toggleNodeTextarea(this)" title="Show/hide JSON">▼</button><button class="btn btn-ghost btn-xs text-error" onclick="this.closest('.stats-node-input').remove()">x</button></div><textarea class="textarea textarea-bordered w-full h-24 font-mono text-xs node-stats-json" placeholder='Paste stats JSON...'></textarea>`;c.appendChild(d);updateNodeLabels()}
 
@@ -421,15 +499,15 @@ ch.setOption({title:{text:indexer?`State: ${indexer.indexer_state||'—'} · Mem
 ch.on('click',p=>{const tbl=document.getElementById('tbl-'+nIdx);if(!tbl)return;tbl.querySelectorAll('tr.highlighted').forEach(r=>r.classList.remove('highlighted'));if(p.data._fullPath){const row=tbl.querySelector(`tr[data-key="${CSS.escape(p.data._fullPath)}"]`);if(row){row.classList.add('highlighted');row.scrollIntoView({behavior:'smooth',block:'center'})}}else if(p.treePathInfo&&p.treePathInfo.length>1){const parts=p.treePathInfo.slice(1).map(n=>n.name);const prefix=parts.join(':');const rows=[...tbl.querySelectorAll('tr[data-key]')].filter(r=>r.dataset.key.startsWith(prefix));if(rows.length){rows[0].classList.add('highlighted');rows[0].scrollIntoView({behavior:'smooth',block:'center'})}}});
 chartIndexMaps.push({nodeIdx:nIdx,chart:ch,data})}
 
-function makeBar(elId,title,labels,values,color,vFmt){const el=document.getElementById(elId);if(!el)return;const ch=echarts.init(el);activeCharts.push(ch);ch.setOption({title:{text:title,left:'center',textStyle:{fontSize:12}},tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:p=>p[0]?`<b>${p[0].name}</b><br>${vFmt?vFmt(p[0].value):p[0].value}`:''}, grid:{left:10,right:20,top:35,bottom:5,containLabel:true},xAxis:{type:'value',axisLabel:{fontSize:10,formatter:vFmt}},yAxis:{type:'category',data:labels,axisLabel:{fontSize:9,width:160,overflow:'truncate'},inverse:true},series:[{type:'bar',data:values,itemStyle:{color,borderRadius:[0,3,3,0]},barMaxWidth:18}]})}
+function makeBar(elId,title,labels,values,color,vFmt){const el=document.getElementById(elId);if(!el)return;const ch=echarts.init(el);activeCharts.push(ch);const fullLabels=labels;const shortLabels=labels.map(l=>truncPart(l,20));ch.setOption({title:{text:title,left:'center',textStyle:{fontSize:14,fontWeight:'bold',color:'#1f2937'}},tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:p=>p[0]?`<b>${fullLabels[p[0].dataIndex]}</b><br>${vFmt?vFmt(p[0].value):p[0].value}`:''}, grid:{left:10,right:20,top:40,bottom:5,containLabel:true},xAxis:{type:'value',axisLabel:{fontSize:10,formatter:vFmt}},yAxis:{type:'category',data:shortLabels,axisLabel:{fontSize:11,width:160,overflow:'truncate',color:'#374151'},inverse:true},series:[{type:'bar',data:values,itemStyle:{color,borderRadius:[0,3,3,0]},barMaxWidth:18}]})}
 
 function makePie(elId,title,data){const el=document.getElementById(elId);if(!el)return;const ch=echarts.init(el);activeCharts.push(ch);ch.setOption({title:{text:title,left:'center',textStyle:{fontSize:12}},tooltip:{trigger:'item',formatter:'{b}: {c} ({d}%)'},legend:{orient:'vertical',left:'left',top:'middle',textStyle:{fontSize:10}},series:[{type:'pie',radius:['30%','60%'],center:['55%','55%'],itemStyle:{borderRadius:4,borderColor:'#fff',borderWidth:2},label:{show:true,formatter:'{b}\n{d}%',fontSize:9},data}]})}
 
 function makeGauge(elId,title,value,max,unit){const el=document.getElementById(elId);if(!el)return;const ch=echarts.init(el);activeCharts.push(ch);const pct=max>0?(value/max*100):0;ch.setOption({series:[{type:'gauge',startAngle:200,endAngle:-20,min:0,max:100,progress:{show:true,width:14,itemStyle:{color:pct>90?'#ef4444':pct>70?'#f59e0b':'#22c55e'}},axisLine:{lineStyle:{width:14,color:[[1,'#e5e7eb']]}},axisTick:{show:false},splitLine:{show:false},axisLabel:{show:false},pointer:{show:false},title:{offsetCenter:[0,'40%'],fontSize:11,color:'#666'},detail:{valueAnimation:true,offsetCenter:[0,'0%'],fontSize:20,fontWeight:'bold',formatter:()=>fmt(value),color:'#333'},data:[{value:pct.toFixed(0),name:title+'\n'+fmt(value)+' / '+fmt(max)}]}]})}
 
-function makeStackedDiskDataBar(elId,data){const el=document.getElementById(elId);if(!el)return;const ex=echarts.getInstanceByDom(el);if(ex){activeCharts=activeCharts.filter(c=>c!==ex);ex.dispose()}const ch=echarts.init(el);activeCharts.push(ch);const labels=data.map(x=>x.name);const usefulDisk=data.map(x=>{const ds=x.disk_size||0,fp=x.frag_percent||0;return Math.round(ds*(1-fp/100))});const fragWaste=data.map(x=>{const ds=x.disk_size||0,fp=x.frag_percent||0;return Math.round(ds*fp/100)});const comprSavings=data.map(x=>Math.max(0,(x.data_size||0)-(x.disk_size||0)));ch.setOption({title:{text:'Index Storage Breakdown',left:'center',textStyle:{fontSize:12}},tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:function(p){if(!p.length)return'';const i=p[0].dataIndex;const d=data[i];const ds=d.disk_size||0,da=d.data_size||0,fp=d.frag_percent||0;const useful=Math.round(ds*(1-fp/100));const frag=Math.round(ds*fp/100);const saved=Math.max(0,da-ds);const comprPct=da>0?((1-ds/da)*100).toFixed(0):0;let h='<b>'+p[0].name+'</b><br><span style="color:#888;font-size:11px">'+d.bucket+'.'+d.scope+'.'+d.collection+'</span><br>';h+='<span style="color:#3b82f6">●</span> Useful Disk: '+fmt(useful)+'<br>';h+='<span style="color:#ef4444">●</span> Fragmentation: '+fmt(frag)+' ('+fp+'%)<br>';if(saved>0)h+='<span style="color:#22c55e">●</span> Compression Savings: '+fmt(saved)+'<br>';h+='<hr style="margin:3px 0;border-color:#eee">';h+='Data** (uncompressed): '+fmt(da)+'<br>';h+='Disk* (on disk): '+fmt(ds);if(da>ds)h+=' <span style="color:#22c55e;font-size:11px">('+comprPct+'% compressed)</span>';return h}},legend:{data:['Useful Disk','Fragmentation','Compression Savings'],top:28,textStyle:{fontSize:10}},grid:{left:10,right:20,top:60,bottom:5,containLabel:true},xAxis:{type:'value',axisLabel:{fontSize:10,formatter:fmt}},yAxis:{type:'category',data:labels,axisLabel:{fontSize:9,width:160,overflow:'truncate'},inverse:true},series:[{name:'Useful Disk',type:'bar',stack:'total',data:usefulDisk,itemStyle:{color:'#3b82f6'},barMaxWidth:18},{name:'Fragmentation',type:'bar',stack:'total',data:fragWaste,itemStyle:{color:'#ef4444'},barMaxWidth:18},{name:'Compression Savings',type:'bar',stack:'total',data:comprSavings,itemStyle:{color:'rgba(34,197,94,0.25)',borderColor:'#22c55e',borderWidth:1,borderType:'dashed'},barMaxWidth:18,label:{show:true,position:'right',fontSize:10,color:'#666',formatter:function(p){const d=data[p.dataIndex];const da=d.data_size||0,ds=d.disk_size||0;if(da>ds){const pct=((1-ds/da)*100).toFixed(0);return pct+'% compressed'}const fp=d.frag_percent||0;return fp>0?fp+'% frag':''}}}]})}
+function makeStackedDiskDataBar(elId,data){const el=document.getElementById(elId);if(!el)return;const ex=echarts.getInstanceByDom(el);if(ex){activeCharts=activeCharts.filter(c=>c!==ex);ex.dispose()}const ch=echarts.init(el);activeCharts.push(ch);const fullLabels=data.map(x=>x.name);const labels=data.map(x=>truncPart(x.name,20));const usefulDisk=data.map(x=>{const ds=x.disk_size||0,fp=x.frag_percent||0;return Math.round(ds*(1-fp/100))});const fragWaste=data.map(x=>{const ds=x.disk_size||0,fp=x.frag_percent||0;return Math.round(ds*fp/100)});const comprSavings=data.map(x=>Math.max(0,(x.data_size||0)-(x.disk_size||0)));ch.setOption({title:{text:'Index Storage Breakdown',left:'center',textStyle:{fontSize:14,fontWeight:'bold',color:'#1f2937'}},tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:function(p){if(!p.length)return'';const i=p[0].dataIndex;const d=data[i];const ds=d.disk_size||0,da=d.data_size||0,fp=d.frag_percent||0;const useful=Math.round(ds*(1-fp/100));const frag=Math.round(ds*fp/100);const saved=Math.max(0,da-ds);const comprPct=da>0?((1-ds/da)*100).toFixed(0):0;let h='<b>'+fullLabels[i]+'</b><br><span style="color:#888;font-size:11px">'+d.bucket+'.'+d.scope+'.'+d.collection+'</span><br>';h+='<span style="color:#3b82f6">●</span> Useful Disk: '+fmt(useful)+'<br>';h+='<span style="color:#ef4444">●</span> Fragmentation: '+fmt(frag)+' ('+fp+'%)<br>';if(saved>0)h+='<span style="color:#22c55e">●</span> Compression Savings: '+fmt(saved)+'<br>';h+='<hr style="margin:3px 0;border-color:#eee">';h+='Data** (uncompressed): '+fmt(da)+'<br>';h+='Disk* (on disk): '+fmt(ds);if(da>ds)h+=' <span style="color:#22c55e;font-size:11px">('+comprPct+'% compressed)</span>';return h}},legend:{data:['Useful Disk','Fragmentation','Compression Savings'],top:32,textStyle:{fontSize:10}},grid:{left:10,right:20,top:60,bottom:5,containLabel:true},xAxis:{type:'value',axisLabel:{fontSize:10,formatter:fmt}},yAxis:{type:'category',data:labels,axisLabel:{fontSize:11,width:160,overflow:'truncate',color:'#374151'},inverse:true},series:[{name:'Useful Disk',type:'bar',stack:'total',data:usefulDisk,itemStyle:{color:'#3b82f6'},barMaxWidth:18},{name:'Fragmentation',type:'bar',stack:'total',data:fragWaste,itemStyle:{color:'#ef4444'},barMaxWidth:18},{name:'Compression Savings',type:'bar',stack:'total',data:comprSavings,itemStyle:{color:'rgba(34,197,94,0.25)',borderColor:'#22c55e',borderWidth:1,borderType:'dashed'},barMaxWidth:18,label:{show:true,position:'right',fontSize:10,color:'#666',formatter:function(p){const d=data[p.dataIndex];const da=d.data_size||0,ds=d.disk_size||0;if(da>ds){const pct=((1-ds/da)*100).toFixed(0);return pct+'% compressed'}const fp=d.frag_percent||0;return fp>0?fp+'% frag':''}}}]})}
 
-function makeStackedDiskMemBar(elId,data){const el=document.getElementById(elId);if(!el)return;const ex=echarts.getInstanceByDom(el);if(ex){activeCharts=activeCharts.filter(c=>c!==ex);ex.dispose()}const ch=echarts.init(el);activeCharts.push(ch);const labels=data.map(x=>x.name);const diskValues=data.map(x=>x.disk_size||0);const memValues=data.map(x=>x.memory_used||0);ch.setOption({title:{text:'Index Size: Disk* vs Memory',left:'center',textStyle:{fontSize:12}},tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:function(p){if(!p.length)return'';const i=p[0].dataIndex;const d=data[i];const ds=d.disk_size||0,mu=d.memory_used||0;const res=d.resident_percent!=null?d.resident_percent:null;const rim=d.recs_in_mem||0,rod=d.recs_on_disk||0;let h='<b>'+p[0].name+'</b><br><span style="color:#888;font-size:11px">'+d.bucket+'.'+d.scope+'.'+d.collection+'</span><br>';h+='<span style="color:#3b82f6">●</span> Disk*: '+fmt(ds)+'<br>';h+='<span style="color:#f59e0b">●</span> Memory: '+fmt(mu)+'<br>';if(res!=null)h+='Resident: '+res+'%<br>';h+='Records in mem: '+fmtN(rim)+' · on disk: '+fmtN(rod);return h}},legend:{data:['Disk*','Memory'],top:28,textStyle:{fontSize:10}},grid:{left:10,right:20,top:60,bottom:5,containLabel:true},xAxis:{type:'value',axisLabel:{fontSize:10,formatter:fmt}},yAxis:{type:'category',data:labels,axisLabel:{fontSize:9,width:160,overflow:'truncate'},inverse:true},series:[{name:'Disk*',type:'bar',data:diskValues,itemStyle:{color:'#3b82f6'},barMaxWidth:14,barGap:'30%'},{name:'Memory',type:'bar',data:memValues,itemStyle:{color:'#f59e0b'},barMaxWidth:14,label:{show:true,position:'right',fontSize:10,color:'#666',formatter:function(p){const d=data[p.dataIndex];const res=d.resident_percent!=null?d.resident_percent:null;return res!=null?res+'% resident':''}}}]})}
+function makeStackedDiskMemBar(elId,data){const el=document.getElementById(elId);if(!el)return;const ex=echarts.getInstanceByDom(el);if(ex){activeCharts=activeCharts.filter(c=>c!==ex);ex.dispose()}const ch=echarts.init(el);activeCharts.push(ch);const fullLabels=data.map(x=>x.name);const labels=data.map(x=>truncPart(x.name,20));const diskValues=data.map(x=>x.disk_size||0);const memValues=data.map(x=>x.memory_used||0);ch.setOption({title:{text:'Index Size: Disk* vs Memory',left:'center',textStyle:{fontSize:14,fontWeight:'bold',color:'#1f2937'}},tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:function(p){if(!p.length)return'';const i=p[0].dataIndex;const d=data[i];const ds=d.disk_size||0,mu=d.memory_used||0;const res=d.resident_percent!=null?d.resident_percent:null;const rim=d.recs_in_mem||0,rod=d.recs_on_disk||0;let h='<b>'+fullLabels[i]+'</b><br><span style="color:#888;font-size:11px">'+d.bucket+'.'+d.scope+'.'+d.collection+'</span><br>';h+='<span style="color:#3b82f6">●</span> Disk*: '+fmt(ds)+'<br>';h+='<span style="color:#f59e0b">●</span> Memory: '+fmt(mu)+'<br>';if(res!=null)h+='Resident: '+res+'%<br>';h+='Records in mem: '+fmtN(rim)+' · on disk: '+fmtN(rod);return h}},legend:{data:['Disk*','Memory'],top:32,textStyle:{fontSize:10}},grid:{left:10,right:20,top:60,bottom:5,containLabel:true},xAxis:{type:'value',axisLabel:{fontSize:10,formatter:fmt}},yAxis:{type:'category',data:labels,axisLabel:{fontSize:11,width:160,overflow:'truncate',color:'#374151'},inverse:true},series:[{name:'Disk*',type:'bar',data:diskValues,itemStyle:{color:'#3b82f6'},barMaxWidth:14,barGap:'30%'},{name:'Memory',type:'bar',data:memValues,itemStyle:{color:'#f59e0b'},barMaxWidth:14,label:{show:true,position:'right',fontSize:10,color:'#666',formatter:function(p){const d=data[p.dataIndex];const res=d.resident_percent!=null?d.resident_percent:null;return res!=null?res+'% resident':''}}}]})}
 
 function onRowClick(row,nIdx){const key=row.dataset.key;row.closest('table').querySelectorAll('tr.highlighted').forEach(r=>r.classList.remove('highlighted'));row.classList.add('highlighted');const entry=chartIndexMaps.find(m=>m.nodeIdx===nIdx);if(!entry)return;function findN(nodes,t){for(const n of nodes){if(n._fullPath===t)return n.name;if(n.children){const f=findN(n.children,t);if(f)return f}}return null}const nm=findN(entry.data,key);if(nm){entry.chart.dispatchAction({type:'highlight',seriesIndex:0,name:nm});document.getElementById('ch-'+nIdx).scrollIntoView({behavior:'smooth',block:'center'});setTimeout(()=>entry.chart.dispatchAction({type:'downplay',seriesIndex:0,name:nm}),3000)}}
 
@@ -915,11 +993,15 @@ if(statsF.length){
     const sorted=allSorted.slice(0,10);
     if(!sorted.length)return;
     const iKey='metric_'+m.key;
+    const chartId='mchart-'+m.key;
     insightData[iKey]={title:m.label+' — All Indexes',desc:`Sorted ${m.desc?'highest':'lowest'} first. Showing all matching indexes.`,colLabel:m.label.split(' ').slice(1).join(' '),items:allSorted,fmtVal:x=>m.fmt(x[m.key])};
-    html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center gap-2 mb-2"><h3 class="font-bold text-sm">${m.label}</h3>${nodeCountBadges(sorted)}</div><table class="table table-xs"><thead><tr class="bg-base-200"><th>#</th><th>Index</th><th>Node</th><th>Bucket</th><th class="text-right">${m.label.split(' ').slice(1).join(' ')}</th></tr></thead><tbody>`;
-    sorted.forEach((item,i)=>{html+=`<tr class="${rankClass(i)}"><td><span class="font-mono text-xs font-bold">${i+1}</span></td><td class="font-semibold">${item.name}${item._replicaTotal>1?replicaBadge(item):''}</td><td class="text-xs">${nodeBadge(item._nodeName)}</td><td>${item.bucket}</td><td class="font-mono text-xs text-right">${m.fmt(item[m.key])}</td></tr>`});
+    storeMetricChartData(m.key,allSorted,m.label,m.fmt,x=>x[m.key]||0);
+    html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center justify-between mb-2"><div class="flex items-center gap-2"><h3 class="font-bold text-sm">${m.label}</h3>${nodeCountBadges(sorted)}</div><div class="flex items-center gap-1"><div class="join"><button class="btn btn-xs join-item btn-active" id="mtbl-${m.key}-btn" onclick="switchMetricView('${m.key}','table')">Table</button><button class="btn btn-xs join-item" id="mbar-${m.key}-btn" onclick="switchMetricView('${m.key}','chart')">Bar</button></div><button class="btn btn-ghost btn-xs" onclick="expandMetricChart('${chartId}','${m.label}')" title="Expand chart">⛶</button></div></div>`;
+    html+=`<div id="mtbl-wrap-${m.key}"><table class="table table-xs"><thead><tr class="bg-base-200"><th>#</th><th>Index</th><th>Node</th><th>Bucket</th><th class="text-right">${m.label.split(' ').slice(1).join(' ')}</th></tr></thead><tbody>`;
+    sorted.forEach((item,i)=>{html+=`<tr><td><span class="font-mono text-xs font-bold">${i+1}</span></td><td class="font-semibold">${item.name}${item._replicaTotal>1?replicaBadge(item):''}</td><td class="text-xs">${nodeBadge(item._nodeName)}</td><td>${item.bucket}</td><td class="font-mono text-xs text-right">${m.fmt(item[m.key])}</td></tr>`});
     html+=`</tbody></table>`;
     if(allSorted.length>10)html+=`<div class="flex gap-2 justify-center mt-2"><button class="btn btn-ghost btn-xs text-[10px]" onclick="showInsightModal('${iKey}',25)">Show more (25) →</button><button class="btn btn-ghost btn-xs text-[10px]" onclick="showInsightModal('${iKey}',100)">Show more (100) →</button>${allSorted.length>100?`<button class="btn btn-ghost btn-xs text-[10px]" onclick="showInsightModal('${iKey}',${allSorted.length})">Show all (${allSorted.length}) →</button>`:''}</div>`;
+    html+=`</div><div id="${chartId}" class="abox" style="display:none"></div>`;
     html+=`</div></div>`;
   });
 
@@ -927,9 +1009,10 @@ if(statsF.length){
   const never=statsF.filter(x=>!x.last_known_scan_time||x.last_known_scan_time===0);
   if(never.length){
     never.sort((a,b)=>(b.disk_size||0)-(a.disk_size||0));
-    html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center gap-2 mb-2"><h3 class="font-bold text-sm">Never Scanned Indexes (${never.length})</h3>${nodeCountBadges(never)}</div><p class="text-xs text-base-content/50 mb-2">These indexes consume disk but have never been queried. Consider dropping them.</p><div class="overflow-y-auto max-h-[400px]"><table class="table table-xs table-pin-rows"><thead><tr class="bg-base-200"><th>Index</th><th>Node</th><th>Bucket</th><th>Scope</th><th class="text-right">Disk</th></tr></thead><tbody>`;
+    storeMetricChartData('never_scanned',never,'Never Scanned Indexes (Disk Size)',fmt,x=>x.disk_size||0);
+    html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center justify-between mb-2"><div class="flex items-center gap-2"><h3 class="font-bold text-sm">Never Scanned Indexes (${never.length})</h3>${nodeCountBadges(never)}</div><div class="flex items-center gap-1"><div class="join"><button class="btn btn-xs join-item btn-active" id="mtbl-never_scanned-btn" onclick="switchMetricView('never_scanned','table')">Table</button><button class="btn btn-xs join-item" id="mbar-never_scanned-btn" onclick="switchMetricView('never_scanned','chart')">Bar</button><button class="btn btn-xs join-item" id="mpie-never_scanned-btn" onclick="switchMetricView('never_scanned','pie')">Pie</button></div><button class="btn btn-ghost btn-xs" onclick="expandMetricChart('mchart-never_scanned','Never Scanned Indexes')" title="Expand chart">⛶</button></div></div><div id="mtbl-wrap-never_scanned"><p class="text-xs text-base-content/50 mb-2">These indexes consume disk but have never been queried. Consider dropping them.</p><div class="overflow-y-auto max-h-[400px]"><table class="table table-xs table-pin-rows"><thead><tr class="bg-base-200"><th>Index</th><th>Node</th><th>Bucket</th><th>Scope</th><th class="text-right">Disk</th></tr></thead><tbody>`;
     never.forEach(x=>{html+=`<tr><td class="font-semibold">${x.name}${x._replicaTotal>1?replicaBadge(x):''}</td><td class="text-xs">${nodeBadge(x._nodeName)}</td><td>${x.bucket}</td><td>${x.scope}</td><td class="font-mono text-xs text-right">${fmt(x.disk_size)}</td></tr>`});
-    html+=`</tbody></table></div></div></div>`;
+    html+=`</tbody></table></div></div><div id="mchart-never_scanned" class="abox" style="display:none"></div></div></div>`;
   }
 }
 
@@ -1069,6 +1152,45 @@ function expandChart(srcElId,title){
     const onClose=()=>{bigChart.dispose();modal.removeEventListener('close',onClose)};
     modal.addEventListener('close',onClose);
   },100);
+}
+
+// ===== METRIC TABLE/CHART TOGGLE =====
+let metricChartData={};
+function storeMetricChartData(key,items,label,fmtFn,valueFn){metricChartData[key]={items,label,fmtFn,valueFn}}
+function renderMetricHBar(elId,key){
+  const el=document.getElementById(elId);if(!el)return;
+  const d=metricChartData[key];if(!d)return;
+  const existing=echarts.getInstanceByDom(el);if(existing){activeCharts=activeCharts.filter(c=>c!==existing);existing.dispose()}
+  const items=d.items.slice(0,15);
+  const labels=items.map(x=>truncPart(x.name,20));
+  const values=items.map(x=>d.valueFn(x));
+  const ch=echarts.init(el);activeCharts.push(ch);
+  ch.setOption({title:{text:d.label,left:'center',textStyle:{fontSize:14,fontWeight:'bold',color:'#1f2937'}},tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:function(p){if(!p.length||!p[0])return'';const i=p[0].dataIndex;const item=items[i];return'<b>'+item.name+'</b><br>'+(item._nodeName?item._nodeName+'<br>':'')+item.bucket+'.'+item.scope+'.'+item.collection+'<br>'+d.fmtFn(d.valueFn(item))}},grid:{left:10,right:20,top:40,bottom:5,containLabel:true},xAxis:{type:'value',axisLabel:{fontSize:10,formatter:d.fmtFn}},yAxis:{type:'category',data:labels,axisLabel:{fontSize:11,width:160,overflow:'truncate',color:'#374151'},inverse:true},series:[{type:'bar',data:values.map((v,i)=>({value:v,itemStyle:{color:globalNodeColors[items[i]._nodeName]||'#3b82f6'}})),barMaxWidth:18,label:{show:true,position:'right',fontSize:10,color:'#666',formatter:function(p){return d.fmtFn(p.value)}}}]});
+}
+function renderMetricPie(elId,key){
+  const el=document.getElementById(elId);if(!el)return;
+  const d=metricChartData[key];if(!d)return;
+  const existing=echarts.getInstanceByDom(el);if(existing){activeCharts=activeCharts.filter(c=>c!==existing);existing.dispose()}
+  const items=d.items.slice(0,15);
+  const ch=echarts.init(el);activeCharts.push(ch);
+  ch.setOption({title:{text:d.label,left:'center',textStyle:{fontSize:12}},tooltip:{trigger:'item',formatter:function(p){const item=items[p.dataIndex];return'<b>'+item.name+'</b><br>'+item.bucket+'.'+item.scope+'.'+item.collection+'<br>'+d.fmtFn(d.valueFn(item))+' ('+p.percent+'%)'}},legend:{show:false},series:[{type:'pie',radius:['25%','60%'],center:['50%','55%'],itemStyle:{borderRadius:4,borderColor:'#fff',borderWidth:2},label:{show:true,formatter:function(p){return p.name+'\n'+d.fmtFn(p.value)},fontSize:9},data:items.map(x=>({name:x.name,value:d.valueFn(x)}))}]});
+}
+function switchMetricView(key,mode){
+  document.getElementById('mtbl-'+key+'-btn').classList.toggle('btn-active',mode==='table');
+  document.getElementById('mbar-'+key+'-btn').classList.toggle('btn-active',mode==='chart');
+  const pieBtn=document.getElementById('mpie-'+key+'-btn');if(pieBtn)pieBtn.classList.toggle('btn-active',mode==='pie');
+  const tbl=document.getElementById('mtbl-wrap-'+key);
+  const chart=document.getElementById('mchart-'+key);
+  if(!tbl||!chart)return;
+  if(mode==='chart'){tbl.style.display='none';chart.style.display='';renderMetricHBar('mchart-'+key,key)}
+  else if(mode==='pie'){tbl.style.display='none';chart.style.display='';renderMetricPie('mchart-'+key,key)}
+  else{tbl.style.display='';chart.style.display='none'}
+}
+function expandMetricChart(chartElId,title){
+  const el=document.getElementById(chartElId);if(!el)return;
+  let srcChart=echarts.getInstanceByDom(el);
+  if(!srcChart){el.style.display='';const key=chartElId.replace('mchart-','');renderMetricHBar(chartElId,key);srcChart=echarts.getInstanceByDom(el);if(!srcChart)return}
+  expandChart(chartElId,title);
 }
 
 // ===== SERVER FILE API =====
