@@ -1,6 +1,6 @@
 # Release Notes
 
-## v2.1.0 (2026-03-10)
+## v2.2.0 (2026-03-16)
 
 ### New Features
 
@@ -8,7 +8,7 @@
 
 ### UX Improvements
 
-- Updated version badge to v2.1.0.
+- Updated version badge to v2.2.0.
 
 ---
 
