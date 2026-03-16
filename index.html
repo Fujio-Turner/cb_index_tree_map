@@ -289,7 +289,8 @@ function rankClass(i){return i===0?'bg-warning/30':i===1?'bg-base-200':i===2?'bg
 // ===== FILTERS =====
 function getSelectedNodes(){const cbs=document.querySelectorAll('#f-node-list input[type=checkbox]:not(#f-node-all)');const checked=[...cbs].filter(c=>c.checked).map(c=>c.value);const all=document.getElementById('f-node-all');if(!cbs.length||!all||(all&&all.checked))return[];return checked}
 function getFilters(){return{nodes:getSelectedNodes(),bucket:document.getElementById('f-bucket').value,scope:document.getElementById('f-scope').value,collection:document.getElementById('f-collection').value,index:document.getElementById('f-index').value,scan:document.getElementById('f-scan').value,uniqueOnly:document.getElementById('f-unique').checked}}
-function matchFilter(item,f){const neverScanned=!item.last_known_scan_time||item.last_known_scan_time===0;if(f.scan==='exclude-never'&&neverScanned)return false;if(f.scan==='only-never'&&!neverScanned)return false;return(!f.bucket||item.bucket===f.bucket)&&(!f.scope||item.scope===f.scope)&&(!f.collection||item.collection===f.collection)&&(!f.index||item.name===f.index)}
+function getScanTime(item){if(item.last_known_scan_time)return item.last_known_scan_time;const key=item.bucket+':'+item.scope+':'+item.collection+':'+item.name;for(const node of globalStatsFlat){const found=node.flat.find(s=>s.fullKey===key||s.bucket+':'+s.scope+':'+s.collection+':'+s.name===key);if(found&&found.last_known_scan_time)return found.last_known_scan_time}return 0}
+function matchFilter(item,f){if(f.scan){const scanTime=getScanTime(item);const neverScanned=!scanTime||scanTime===0;if(f.scan==='exclude-never'&&neverScanned)return false;if(f.scan==='only-never'&&!neverScanned)return false}return(!f.bucket||item.bucket===f.bucket)&&(!f.scope||item.scope===f.scope)&&(!f.collection||item.collection===f.collection)&&(!f.index||item.name===f.index)}
 function dedup(arr){const seen=new Set();return arr.filter(x=>{const k=x.bucket+':'+x.scope+':'+x.collection+':'+x.name;if(seen.has(k))return false;seen.add(k);return true})}
 function matchNodeFilter(nodeName,f){return!f.nodes.length||f.nodes.includes(nodeName)}
 function getFilteredStats(){const f=getFilters();return globalStatsFlat.filter(n=>matchNodeFilter(n.nodeName,f)).map(n=>({...n,flat:n.flat.filter(x=>matchFilter(x,f))})).filter(n=>n.flat.length>0)}
@@ -336,7 +337,7 @@ function cascadeFilters(){
   // Scan filter: update counts
   const fScan=document.getElementById('f-scan'),curScan=fScan.value;
   const scanPool=idxPool;
-  const neverCount=scanPool.filter(i=>!i.last_known_scan_time||i.last_known_scan_time===0).length;
+  const neverCount=scanPool.filter(i=>{const t=getScanTime(i);return !t||t===0}).length;
   const scannedCount=scanPool.length-neverCount;
   fScan.innerHTML=`<option value=""${curScan===''?' selected':''}>All (${scanPool.length})</option><option value="exclude-never"${curScan==='exclude-never'?' selected':''}>Exclude Never Scanned (${scannedCount})</option><option value="only-never"${curScan==='only-never'?' selected':''}>Only Never Scanned (${neverCount})</option>`;
   // Reset values that are no longer valid
