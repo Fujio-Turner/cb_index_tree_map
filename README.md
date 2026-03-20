@@ -71,7 +71,10 @@ Both plans show you a **before → after Lumpiness Score comparison**, a detaile
 ### 💃 Index Placement Optimizer Tab *(Beta)*
 - **Plan A: Built-in Rebalance** — Greedy algorithm computes an optimized placement and generates `ALTER INDEX` statements
 - **Plan B: AI-Assisted Rebalance** — Export topology with obfuscated hashes + TOON token optimization, send to any AI, import the result back. The tool de-hashes, scores, and generates ALTER INDEX statements.
+- **🎯 Greedy / Performance Strategy Toggle** — Choose between **Greedy** (balance by size/count) and **Performance** (spread hot indexes across nodes using scan requests, latency, and throughput metrics). The selected strategy is embedded in AI exports so the AI follows the same optimization goal.
 - **⭐ Priority Indexes** — Mark specific indexes as "priority" so the optimizer places them on nodes with the least memory load, maximizing the chance they stay fully resident in RAM. Priority selections are included in both Plan A (built-in) and Plan B (AI) exports. The moves table shows "Priority — placed for best memory" reasoning for any prioritized index that was moved.
+- **🔢 Critical Count Check** — AI exports include an explicit count check requiring the AI to return the exact same number of index entries. If the AI drops indexes, a detailed error alert lists every missing index.
+- **⚠️ File-Based Rebalance Warning** — Banner alerting users that `ALTER INDEX` with `nodes` clause is not supported when file-based rebalance is enabled, with links to Couchbase docs.
 - **Lumpiness Score: Before → After** — Radial gauge comparison showing how much the rebalance improves distribution
 - **Proposed Moves table** with source → destination nodes, disk sizes, and reasoning
 - **AI Reasoning display** — Auto-formatted with color-coded node badges, bold metrics, and de-obfuscated names
@@ -81,6 +84,9 @@ Both plans show you a **before → after Lumpiness Score comparison**, a detaile
 - Filter everything by **Bucket**, **Scope**, **Collection**, **Index Name**, or **Node** — all tabs update instantly
 - **Multi-node selection** — Filter by one or more index nodes simultaneously
 - **Scan history filter** — Show All, Exclude Never Scanned, or Only Never Scanned indexes
+- **🔎 Indexed Field Filter** — Filter indexes by field names with wildcard support (`city_*`, `*_id`, `addr.*`). Fuzzy autocomplete powered by uFuzzy shows matching fields with index counts as you type.
+- **⛶ Chart Expand** — Click the expand (⛶) button on any chart to open it in a full-screen modal for detailed inspection
+- **📊 Table / Bar / Pie Toggle** — Analysis tab leaderboard tables (Largest Disk, Highest Frag, etc.) and Never Scanned Indexes now offer Table, Bar, and Pie view toggles with expandable chart modals
 - **💡 Tooltips everywhere** — Hover over any column header, stat card, filter dropdown, or button to see a plain-English explanation of what that metric means and why it matters
 
 ---
@@ -209,7 +215,7 @@ docker compose up --build    # rebuild after updating index.html
 
 ## 📦 Current Release
 
-**v2.2.0** — See [release notes](release_notes.md) for details.
+**v2.3.1** — See [release notes](release_notes.md) for details.
 
 ---
 

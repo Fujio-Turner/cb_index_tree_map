@@ -1,5 +1,42 @@
 # Release Notes
 
+## v2.3.1 (2026-03-20)
+
+### New Features
+
+- **🎯 Performance Placement Strategy** — The Index Placement Optimizer now supports two placement strategies via a **Greedy / Performance** radio toggle:
+  - **Greedy** (default) — Balances indexes by disk size, memory, and index count. Best when all indexes have roughly equal query load.
+  - **Performance** — Factors in scan requests, latency (`avgScanLatencyNs`, `totalScanDuration`, `numRowsReturned`, `scanBytesRead`), and index size to spread hot (heavily queried) indexes across different nodes, avoiding hot-spots. The algorithm adds two new penalty factors: **Request load** (0.001 pts per request already on node) and **Scan load** (0.01 pts per scan-ms on node). Replica groups are sorted by a composite weight of disk size + scan load instead of disk size alone.
+  - The selected strategy is included in `_meta.placementStrategy` in both Plan A (built-in) and Plan B (AI) exports, so the AI receives strategy-specific instructions.
+
+- **🔢 Critical Count Check for AI Plans** — AI export instructions now include an explicit **CRITICAL COUNT CHECK** that tells the AI exactly how many total index entries the input contains and requires the AI to output the same count. This prevents the AI from silently dropping or merging indexes.
+
+- **⚠️ AI Dropped Index Detection** — When loading an AI plan (Plan B), the tool now validates the total index count returned by the AI against the expected count. If the AI dropped indexes:
+  - A prominent **error alert** shows exactly how many indexes were dropped.
+  - A collapsible **"Show N missing indexes"** detail table lists every dropped index with its name, bucket, scope.collection, node, and disk size.
+  - The status message shows a warning instead of a success indicator.
+
+- **⚠️ File-Based Rebalance Warning** — A new warning banner at the top of the Index Placement Optimizer tab alerts users that `ALTER INDEX` with the `nodes` clause is **not supported** when file-based rebalance is enabled on the cluster, with links to the relevant Couchbase documentation.
+
+### Issues Fixed
+
+- **#42 — Optimizer used unfiltered node data for current distribution** — The "Current Distribution" and "Plan B: Current" tables in the Index Placement Optimizer now correctly use the filtered stats data instead of the unfiltered `globalStatsFlat`, ensuring that node-level filters are respected in the before/after comparisons and bar charts.
+
+- **#44 — AI export now includes scan/latency metrics** — The topology export for both hashed (obfuscated) and plain modes now includes `avgScanLatencyNs`, `totalScanDuration`, `numRowsReturned`, and `scanBytesRead` fields per index, giving the AI enough data to make performance-aware placement decisions.
+
+### UX Improvements
+
+- Updated version badge to v2.3.1.
+- The "How does it decide?" explanation in the Proposed Moves section now dynamically reflects the selected placement strategy and shows the additional Performance penalty factors when in Performance mode.
+- Plan A built-in rebalance now tracks per-node request and scan load totals for Performance mode scoring.
+
+### Stats
+
+- **Files changed:** 1 (`index.html`)
+- **Lines:** +123 / −20
+
+---
+
 ## v2.2.0 (2026-03-16)
 
 ### New Features
