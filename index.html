@@ -26,7 +26,7 @@
   <div class="flex-1 gap-3">
     <span class="text-xl font-bold text-error">CB Index Treemap</span>
     <span class="text-xs text-base-content/50 hidden sm:inline">Visualize & analyze GSI index sizes, performance & capacity</span>
-    <span class="badge badge-ghost badge-sm text-[10px]">v2.3.0</span>
+    <span class="badge badge-ghost badge-sm text-[10px]">v2.3.1</span>
   </div>
   <div class="flex-none">
     <button class="btn btn-ghost btn-sm gap-1" onclick="openFileManager()"><span id="saved-count" class="badge badge-sm badge-ghost">0</span></button>
@@ -1419,10 +1419,12 @@ function buildHashedTopology(){
   }
   const rackExtra=Object.keys(rackInfo).length?' Rack/Zone awareness: replicas of the same index MUST be on different racks (see _meta.rackZones for node→rack mapping).':'';
   const prioExtra=priorityIndexes.size?' Priority indexes (listed in _meta.priorityIndexes) should be placed on nodes with the LEAST memory load so they get more RAM.':'';
+  const totalIdxCount=filtered.reduce((s,n)=>s+n.flat.length,0);
   const replicaRule='REPLICA RULES: Each index has replicaIndex and replicaTotal fields. You MUST output every copy — if replicaTotal is 2, that index MUST appear exactly 2 times in your output across 2 different nodes (once with replicaIndex=1, once with replicaIndex=2). Never drop or merge replicas. The total number of index entries in your output MUST equal the total in the input. Replicas of the same index (same bucket+scope+collection+index) MUST be on different nodes.';
+  const countCheck='CRITICAL COUNT CHECK: The input contains exactly '+totalIdxCount+' total index entries across all nodes. Your output MUST also contain exactly '+totalIdxCount+' total index entries across all nodes. Do NOT drop, skip, merge, or omit any indexes. Before returning your response, count the total entries in your output and verify it equals '+totalIdxCount+'. If it does not match, you have a bug — go back and fix it. ';
   const strategyText=rebalanceMode==='performance'?'STRATEGY: Performance mode — the PRIMARY goal is to spread high-traffic (hot) indexes across different nodes to avoid hot-spots. Use requests (cumulative scan count), avgScanLatencyNs, totalScanDuration, numRowsReturned, and scanBytesRead fields to identify hot indexes. Two or more hot indexes should NOT be placed on the same node. Secondary goal: balance by size and memory. ':'STRATEGY: Greedy mode — balance indexes across nodes primarily by disk size, memory usage, and index count. Spread bucket/scope/collection diversity evenly. ';
-  topo._instructions_json=strategyText+'Rearrange indexes across nodes for optimal balance. '+replicaRule+rackExtra+prioExtra+' Prefer not moving very large indexes unless it significantly improves balance. Return your response as JSON matching _response_schema exactly. Each index entry MUST be a plain CSV string (e.g. "bucket,scope,collection,index,0,0,0,0,1,1,100,0,0") — do NOT wrap the string in extra quotes or escape quotes within it. In the "description" field, explain WHY this arrangement is better — reference specific index ids, bucket hashes, and node hashes from the input.';
-  topo._instructions_toon='This input is in TOON format (Token-Oriented Object Notation, see toonformat.dev). Each node key has a typed array header like "nodeHash"[count]{field1,field2,...}: followed by CSV rows matching that header. '+strategyText+'Rearrange indexes across nodes for optimal balance. '+replicaRule+rackExtra+prioExtra+' Prefer not moving very large indexes unless it significantly improves balance. Return your response as JSON matching _response_schema exactly. Each index entry MUST be a plain CSV string (e.g. "bucket,scope,collection,index,0,0,0,0,1,1,100,0,0") — do NOT wrap the string in extra quotes or escape quotes within it. In the "description" field, explain WHY this arrangement is better — reference specific index ids, bucket hashes, and node hashes from the input.';
+  topo._instructions_json=countCheck+strategyText+'Rearrange indexes across nodes for optimal balance. '+replicaRule+rackExtra+prioExtra+' Prefer not moving very large indexes unless it significantly improves balance. Return your response as JSON matching _response_schema exactly. Each index entry MUST be a plain CSV string (e.g. "bucket,scope,collection,index,0,0,0,0,1,1,100,0,0") — do NOT wrap the string in extra quotes or escape quotes within it. In the "description" field, explain WHY this arrangement is better — reference specific index ids, bucket hashes, and node hashes from the input.';
+  topo._instructions_toon='This input is in TOON format (Token-Oriented Object Notation, see toonformat.dev). Each node key has a typed array header like "nodeHash"[count]{field1,field2,...}: followed by CSV rows matching that header. '+countCheck+strategyText+'Rearrange indexes across nodes for optimal balance. '+replicaRule+rackExtra+prioExtra+' Prefer not moving very large indexes unless it significantly improves balance. Return your response as JSON matching _response_schema exactly. Each index entry MUST be a plain CSV string (e.g. "bucket,scope,collection,index,0,0,0,0,1,1,100,0,0") — do NOT wrap the string in extra quotes or escape quotes within it. In the "description" field, explain WHY this arrangement is better — reference specific index ids, bucket hashes, and node hashes from the input.';
   topo._response_schema=buildResponseSchema(sampleNode,true);
   return topo;
 }
@@ -1461,10 +1463,12 @@ function buildPlainTopology(){
   }
   const rackExtraP=Object.keys(rackInfoP).length?' Rack/Zone awareness: replicas of the same index MUST be on different racks (see _meta.rackZones for node→rack mapping).':'';
   const prioExtraP=priorityIndexes.size?' Priority indexes (listed in _meta.priorityIndexes) should be placed on nodes with the LEAST memory load so they get more RAM.':'';
+  const totalIdxCountP=filtered.reduce((s,n)=>s+n.flat.length,0);
   const replicaRuleP='REPLICA RULES: Each index has replicaIndex and replicaTotal fields. You MUST output every copy — if replicaTotal is 2, that index MUST appear exactly 2 times in your output across 2 different nodes (once with replicaIndex=1, once with replicaIndex=2). Never drop or merge replicas. The total number of index entries in your output MUST equal the total in the input. Replicas of the same index (same bucket+scope+collection+index) MUST be on different nodes.';
+  const countCheckP='CRITICAL COUNT CHECK: The input contains exactly '+totalIdxCountP+' total index entries across all nodes. Your output MUST also contain exactly '+totalIdxCountP+' total index entries across all nodes. Do NOT drop, skip, merge, or omit any indexes. Before returning your response, count the total entries in your output and verify it equals '+totalIdxCountP+'. If it does not match, you have a bug — go back and fix it. ';
   const strategyTextP=rebalanceMode==='performance'?'STRATEGY: Performance mode — the PRIMARY goal is to spread high-traffic (hot) indexes across different nodes to avoid hot-spots. Use requests (cumulative scan count), avgScanLatencyNs, totalScanDuration, numRowsReturned, and scanBytesRead fields to identify hot indexes. Two or more hot indexes should NOT be placed on the same node. Secondary goal: balance by size and memory. ':'STRATEGY: Greedy mode — balance indexes across nodes primarily by disk size, memory usage, and index count. Spread bucket/scope/collection diversity evenly. ';
-  topo._instructions_json=strategyTextP+'Rearrange indexes across nodes for optimal balance. '+replicaRuleP+rackExtraP+prioExtraP+' Prefer not moving very large indexes unless it significantly improves balance. Return your response as JSON matching _response_schema exactly. Each index entry MUST be a plain CSV string (e.g. "bucket,scope,collection,index,0,0,0,0,1,1,100,0,0") — do NOT wrap the string in extra quotes or escape quotes within it. In the "description" field, explain WHY this arrangement is better — reference specific index names, buckets, and nodes.';
-  topo._instructions_toon='This input is in TOON format (Token-Oriented Object Notation, see toonformat.dev). Each node key has a typed array header like "nodeName"[count]{field1,field2,...}: followed by CSV rows matching that header. '+strategyTextP+'Rearrange indexes across nodes for optimal balance. '+replicaRuleP+rackExtraP+prioExtraP+' Prefer not moving very large indexes unless it significantly improves balance. Return your response as JSON matching _response_schema exactly. Each index entry MUST be a plain CSV string (e.g. "bucket,scope,collection,index,0,0,0,0,1,1,100,0,0") — do NOT wrap the string in extra quotes or escape quotes within it. In the "description" field, explain WHY this arrangement is better — reference specific index names, buckets, and nodes.';
+  topo._instructions_json=countCheckP+strategyTextP+'Rearrange indexes across nodes for optimal balance. '+replicaRuleP+rackExtraP+prioExtraP+' Prefer not moving very large indexes unless it significantly improves balance. Return your response as JSON matching _response_schema exactly. Each index entry MUST be a plain CSV string (e.g. "bucket,scope,collection,index,0,0,0,0,1,1,100,0,0") — do NOT wrap the string in extra quotes or escape quotes within it. In the "description" field, explain WHY this arrangement is better — reference specific index names, buckets, and nodes.';
+  topo._instructions_toon='This input is in TOON format (Token-Oriented Object Notation, see toonformat.dev). Each node key has a typed array header like "nodeName"[count]{field1,field2,...}: followed by CSV rows matching that header. '+countCheckP+strategyTextP+'Rearrange indexes across nodes for optimal balance. '+replicaRuleP+rackExtraP+prioExtraP+' Prefer not moving very large indexes unless it significantly improves balance. Return your response as JSON matching _response_schema exactly. Each index entry MUST be a plain CSV string (e.g. "bucket,scope,collection,index,0,0,0,0,1,1,100,0,0") — do NOT wrap the string in extra quotes or escape quotes within it. In the "description" field, explain WHY this arrangement is better — reference specific index names, buckets, and nodes.';
   topo._response_schema=buildResponseSchema(sampleNode,false);
   return topo;
 }
@@ -1817,7 +1821,7 @@ function renderMoveIt(){
 <h3 class="font-bold text-sm mb-2">Current Distribution</h3>
 <table class="table table-xs"><thead><tr class="bg-base-200"><th>Node</th>${showRack?'<th>Rack</th>':''}<th class="text-right">Indexes</th><th class="text-right">Disk</th><th class="text-right">Memory</th><th class="text-right">Buckets</th></tr></thead><tbody>`;
   plan.nodeNames.forEach((n,i)=>{
-    const node=globalStatsFlat.find(x=>x.nodeName===n);
+    const node=filtered.find(x=>x.nodeName===n);
     const fl=node?node.flat:[];
     const disk=fl.reduce((s,x)=>s+(x.disk_size||0),0);
     const mem=fl.reduce((s,x)=>s+(x.memory_used||0),0);
@@ -1998,7 +2002,7 @@ function renderMoveIt(){
     beforeFlat:{},afterFlat:{},
   };
   plan.nodeNames.forEach(n=>{
-    const node=globalStatsFlat.find(x=>x.nodeName===n);
+    const node=filtered.find(x=>x.nodeName===n);
     moveItBarData.beforeFlat[n]=node?node.flat:[];
     moveItBarData.afterFlat[n]=plan.assignment[n]||[];
   });
@@ -2282,6 +2286,17 @@ function loadAIPlan(){
 
   if(!resolved){setStatus('moveit-ai-status','Could not match any indexes. Make sure the AI returned the same IDs.','error');return}
 
+  // Validate: AI must return the same total count as input
+  const expectedTotal=filteredStats.reduce((s,n)=>s+n.flat.length,0);
+  const droppedCount=expectedTotal-resolved;
+  const aiDroppedIndexes=[];
+  if(droppedCount>0){
+    // Find which indexes the AI dropped
+    const resolvedKeys=new Set();
+    nodeNames.forEach(n=>{planBAssignment[n].forEach(idx=>{resolvedKeys.add(idx.fullKey)})});
+    filteredStats.forEach(node=>{node.flat.forEach(idx=>{if(!resolvedKeys.has(idx.fullKey))aiDroppedIndexes.push(idx)})});
+  }
+
   // Compute Plan B lumpiness score
   const totalDisk=Object.values(planBTotals).reduce((s,t)=>s+t.disk,0);
   const totalCount=Object.values(planBTotals).reduce((s,t)=>s+t.count,0);
@@ -2328,13 +2343,39 @@ function loadAIPlan(){
   const deltaColor=delta>0?'text-success':delta<0?'text-error':'text-base-content/50';
   const deltaSign=delta>0?'+':'';
 
-  setStatus('moveit-ai-status',`✓ Matched ${resolved} indexes, ${moves.length} moves${unresolved?' ('+unresolved+' unresolved)':''}`,'success');
+  if(droppedCount>0){
+    setStatus('moveit-ai-status',`⚠ Matched ${resolved}/${expectedTotal} indexes — AI dropped ${droppedCount} index${droppedCount!==1?'es':''}! ${moves.length} moves${unresolved?' ('+unresolved+' unresolved)':''}`,'error');
+  }else{
+    setStatus('moveit-ai-status',`✓ Matched ${resolved}/${expectedTotal} indexes, ${moves.length} moves${unresolved?' ('+unresolved+' unresolved)':''}`,'success');
+  }
 
   // Render Plan B results
   const displayDesc=obf?deobfuscateText(aiDescription):aiDescription;
 
   let h=`<div class="card bg-purple-50 shadow-sm mb-4 border border-purple-200"><div class="card-body p-4">
 <h3 class="font-bold text-sm mb-3">Plan B: AI Rebalance Result</h3>`;
+
+  // Dropped indexes warning
+  if(droppedCount>0){
+    h+=`<div class="alert alert-error shadow-sm mb-4">
+<svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+<div>
+  <h4 class="font-bold">AI Dropped ${droppedCount} Index${droppedCount!==1?'es':''}!</h4>
+  <p class="text-xs">The AI returned <b>${resolved}</b> indexes but the input had <b>${expectedTotal}</b>. The missing indexes are listed below. <b>This plan is incomplete</b> — re-send to AI and ask it to include all ${expectedTotal} indexes.</p>
+</div>
+</div>`;
+    if(aiDroppedIndexes.length){
+      h+=`<details class="mb-4"><summary class="btn btn-xs btn-outline btn-error">Show ${aiDroppedIndexes.length} missing index${aiDroppedIndexes.length!==1?'es':''}</summary>
+<div class="stats-table-wrap mt-2"><table class="table table-xs table-zebra"><thead><tr class="bg-error/10"><th>#</th><th>Index</th><th>Bucket</th><th>Scope.Collection</th><th>Node</th><th class="text-right">Disk</th></tr></thead><tbody>`;
+      aiDroppedIndexes.forEach((idx,i)=>{
+        const ni=nodeNames.indexOf(idx.currentNode||'');
+        h+=`<tr><td class="font-mono text-xs">${i+1}</td><td class="font-semibold text-xs">${idx.name}</td><td class="text-xs">${idx.bucket}</td><td class="text-xs">${idx.scope}.${idx.collection}</td>
+<td>${ni>=0?`<span class="badge badge-sm text-white" style="background:${REPLICA_COLORS[ni%REPLICA_COLORS.length]}">${idx.currentNode}</span>`:idx.currentNode||'—'}</td>
+<td class="font-mono text-xs text-right">${fmt(idx.disk_size||0)}</td></tr>`;
+      });
+      h+=`</tbody></table></div></details>`;
+    }
+  }
 
   if(displayDesc){
     h+=`<div class="bg-white/70 rounded-lg p-3 mb-4 border border-purple-100">
@@ -2357,7 +2398,7 @@ function loadAIPlan(){
 <div><h4 class="font-bold text-xs mb-1">Current</h4>
 <table class="table table-xs"><thead><tr class="bg-base-200"><th>Node</th><th class="text-right">Indexes</th><th class="text-right">Disk</th><th class="text-right">Memory</th></tr></thead><tbody>`;
   nodeNames.forEach((n,i)=>{
-    const node=globalStatsFlat.find(x=>x.nodeName===n);
+    const node=filteredStats.find(x=>x.nodeName===n);
     const fl=node?node.flat:[];
     h+=`<tr><td><span class="badge badge-xs text-white" style="background:${REPLICA_COLORS[i%REPLICA_COLORS.length]}">&nbsp;</span> ${n}</td><td class="font-mono text-xs text-right">${fl.length}</td><td class="font-mono text-xs text-right">${fmt(fl.reduce((s,x)=>s+(x.disk_size||0),0))}</td><td class="font-mono text-xs text-right">${fmt(fl.reduce((s,x)=>s+(x.memory_used||0),0))}</td></tr>`;
   });
@@ -2410,7 +2451,7 @@ function loadAIPlan(){
   if(!moveItBarData)moveItBarData={nodeNames,beforeFlat:{},afterFlat:{},planbBeforeFlat:{},planbAfterFlat:{}};
   moveItBarData.planbBeforeFlat={};moveItBarData.planbAfterFlat={};
   nodeNames.forEach(n=>{
-    const node=globalStatsFlat.find(x=>x.nodeName===n);
+    const node=filteredStats.find(x=>x.nodeName===n);
     moveItBarData.planbBeforeFlat[n]=node?node.flat:[];
     moveItBarData.planbAfterFlat[n]=planBAssignment[n]||[];
   });
