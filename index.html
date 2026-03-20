@@ -26,7 +26,7 @@
   <div class="flex-1 gap-3">
     <span class="text-xl font-bold text-error">CB Index Treemap</span>
     <span class="text-xs text-base-content/50 hidden sm:inline">Visualize & analyze GSI index sizes, performance & capacity</span>
-    <span class="badge badge-ghost badge-sm text-[10px]">v2.2.0</span>
+    <span class="badge badge-ghost badge-sm text-[10px]">v2.3.0</span>
   </div>
   <div class="flex-none">
     <button class="btn btn-ghost btn-sm gap-1" onclick="openFileManager()"><span id="saved-count" class="badge badge-sm badge-ghost">0</span></button>
@@ -198,6 +198,7 @@
 let globalSystemFlat=[],globalStatsFlat=[],globalReplicaMap={},globalNodeColors={},currentMetric='disk_size',activeCharts=[],chartIndexMaps=[],statsNodeCount=1,insightData={};
 let priorityIndexes=new Set(); // fullKeys of indexes the user wants more in-memory
 let nodeRackZones={};          // nodeName -> rackZone string
+let rebalanceMode='greedy';    // 'greedy' (size-based) or 'performance' (size + scan/latency weighted)
 
 function buildNodeColors(){
   globalNodeColors={};
@@ -1394,7 +1395,10 @@ function buildHashedTopology(){
       return{
         bucket:bHash,scope:sHash,collection:cHash,index:nHash,
         size:idx.disk_size||0,memoryUsed:idx.memory_used||0,itemsCount:idx.items_count||0,
-        requests:idx.num_requests||0,replicaIndex:rIdx,replicaTotal:rNodes.length,
+        requests:idx.num_requests||0,avgScanLatencyNs:idx.avg_scan_latency||0,
+        totalScanDuration:idx.total_scan_duration||0,numRowsReturned:idx.num_rows_returned||0,
+        scanBytesRead:idx.scan_bytes_read||0,
+        replicaIndex:rIdx,replicaTotal:rNodes.length,
         inMemoryPercent:idx.resident_percent!=null?idx.resident_percent:100,
         fragPercent:idx.frag_percent||0,cacheHitPercent:idx.cache_hit_percent||0
       };
@@ -1404,7 +1408,7 @@ function buildHashedTopology(){
   aiHashLookup=lookup;
   aiNodeHashLookup=nodeLookup;
   const sampleNode=Object.keys(topo.nodes)[0]||'nodeHash';
-  topo._meta={nodeCount:filtered.length,totalIndexes:filtered.reduce((s,n)=>s+n.flat.length,0),generatedAt:new Date().toISOString()};
+  topo._meta={nodeCount:filtered.length,totalIndexes:filtered.reduce((s,n)=>s+n.flat.length,0),generatedAt:new Date().toISOString(),placementStrategy:rebalanceMode};
   // Add rack zones if configured
   const rackInfo={};filtered.forEach(n=>{const r=nodeRackZones[n.nodeName];if(r)rackInfo[fnv1aShort(n.nodeName,salt)]=fnv1aShort(r,salt)});
   if(Object.keys(rackInfo).length)topo._meta.rackZones=rackInfo;
@@ -1416,8 +1420,9 @@ function buildHashedTopology(){
   const rackExtra=Object.keys(rackInfo).length?' Rack/Zone awareness: replicas of the same index MUST be on different racks (see _meta.rackZones for node→rack mapping).':'';
   const prioExtra=priorityIndexes.size?' Priority indexes (listed in _meta.priorityIndexes) should be placed on nodes with the LEAST memory load so they get more RAM.':'';
   const replicaRule='REPLICA RULES: Each index has replicaIndex and replicaTotal fields. You MUST output every copy — if replicaTotal is 2, that index MUST appear exactly 2 times in your output across 2 different nodes (once with replicaIndex=1, once with replicaIndex=2). Never drop or merge replicas. The total number of index entries in your output MUST equal the total in the input. Replicas of the same index (same bucket+scope+collection+index) MUST be on different nodes.';
-  topo._instructions_json='Rearrange indexes across nodes for optimal balance. Balance by: size, memory, requests, bucket/scope/collection diversity. '+replicaRule+rackExtra+prioExtra+' Prefer not moving very large indexes unless it significantly improves balance. Return your response as JSON matching _response_schema exactly. Each index entry MUST be a plain CSV string (e.g. "bucket,scope,collection,index,0,0,0,0,1,1,100,0,0") — do NOT wrap the string in extra quotes or escape quotes within it. In the "description" field, explain WHY this arrangement is better — reference specific index ids, bucket hashes, and node hashes from the input.';
-  topo._instructions_toon='This input is in TOON format (Token-Oriented Object Notation, see toonformat.dev). Each node key has a typed array header like "nodeHash"[count]{field1,field2,...}: followed by CSV rows matching that header. Rearrange indexes across nodes for optimal balance. Balance by: size, memory, requests, bucket/scope/collection diversity. '+replicaRule+rackExtra+prioExtra+' Prefer not moving very large indexes unless it significantly improves balance. Return your response as JSON matching _response_schema exactly. Each index entry MUST be a plain CSV string (e.g. "bucket,scope,collection,index,0,0,0,0,1,1,100,0,0") — do NOT wrap the string in extra quotes or escape quotes within it. In the "description" field, explain WHY this arrangement is better — reference specific index ids, bucket hashes, and node hashes from the input.';
+  const strategyText=rebalanceMode==='performance'?'STRATEGY: Performance mode — the PRIMARY goal is to spread high-traffic (hot) indexes across different nodes to avoid hot-spots. Use requests (cumulative scan count), avgScanLatencyNs, totalScanDuration, numRowsReturned, and scanBytesRead fields to identify hot indexes. Two or more hot indexes should NOT be placed on the same node. Secondary goal: balance by size and memory. ':'STRATEGY: Greedy mode — balance indexes across nodes primarily by disk size, memory usage, and index count. Spread bucket/scope/collection diversity evenly. ';
+  topo._instructions_json=strategyText+'Rearrange indexes across nodes for optimal balance. '+replicaRule+rackExtra+prioExtra+' Prefer not moving very large indexes unless it significantly improves balance. Return your response as JSON matching _response_schema exactly. Each index entry MUST be a plain CSV string (e.g. "bucket,scope,collection,index,0,0,0,0,1,1,100,0,0") — do NOT wrap the string in extra quotes or escape quotes within it. In the "description" field, explain WHY this arrangement is better — reference specific index ids, bucket hashes, and node hashes from the input.';
+  topo._instructions_toon='This input is in TOON format (Token-Oriented Object Notation, see toonformat.dev). Each node key has a typed array header like "nodeHash"[count]{field1,field2,...}: followed by CSV rows matching that header. '+strategyText+'Rearrange indexes across nodes for optimal balance. '+replicaRule+rackExtra+prioExtra+' Prefer not moving very large indexes unless it significantly improves balance. Return your response as JSON matching _response_schema exactly. Each index entry MUST be a plain CSV string (e.g. "bucket,scope,collection,index,0,0,0,0,1,1,100,0,0") — do NOT wrap the string in extra quotes or escape quotes within it. In the "description" field, explain WHY this arrangement is better — reference specific index ids, bucket hashes, and node hashes from the input.';
   topo._response_schema=buildResponseSchema(sampleNode,true);
   return topo;
 }
@@ -1435,14 +1440,17 @@ function buildPlainTopology(){
       return{
         bucket:idx.bucket,scope:idx.scope,collection:idx.collection,index:idx.name,
         size:idx.disk_size||0,memoryUsed:idx.memory_used||0,itemsCount:idx.items_count||0,
-        requests:idx.num_requests||0,replicaIndex:rIdx,replicaTotal:rNodes.length,
+        requests:idx.num_requests||0,avgScanLatencyNs:idx.avg_scan_latency||0,
+        totalScanDuration:idx.total_scan_duration||0,numRowsReturned:idx.num_rows_returned||0,
+        scanBytesRead:idx.scan_bytes_read||0,
+        replicaIndex:rIdx,replicaTotal:rNodes.length,
         inMemoryPercent:idx.resident_percent!=null?idx.resident_percent:100,
         fragPercent:idx.frag_percent||0,cacheHitPercent:idx.cache_hit_percent||0
       };
     });
   });
   const sampleNode=Object.keys(topo.nodes)[0]||'nodeName';
-  topo._meta={nodeCount:filtered.length,totalIndexes:filtered.reduce((s,n)=>s+n.flat.length,0),generatedAt:new Date().toISOString()};
+  topo._meta={nodeCount:filtered.length,totalIndexes:filtered.reduce((s,n)=>s+n.flat.length,0),generatedAt:new Date().toISOString(),placementStrategy:rebalanceMode};
   // Add rack zones if configured
   const rackInfoP={};filtered.forEach(n=>{const r=nodeRackZones[n.nodeName];if(r)rackInfoP[n.nodeName]=r});
   if(Object.keys(rackInfoP).length)topo._meta.rackZones=rackInfoP;
@@ -1454,8 +1462,9 @@ function buildPlainTopology(){
   const rackExtraP=Object.keys(rackInfoP).length?' Rack/Zone awareness: replicas of the same index MUST be on different racks (see _meta.rackZones for node→rack mapping).':'';
   const prioExtraP=priorityIndexes.size?' Priority indexes (listed in _meta.priorityIndexes) should be placed on nodes with the LEAST memory load so they get more RAM.':'';
   const replicaRuleP='REPLICA RULES: Each index has replicaIndex and replicaTotal fields. You MUST output every copy — if replicaTotal is 2, that index MUST appear exactly 2 times in your output across 2 different nodes (once with replicaIndex=1, once with replicaIndex=2). Never drop or merge replicas. The total number of index entries in your output MUST equal the total in the input. Replicas of the same index (same bucket+scope+collection+index) MUST be on different nodes.';
-  topo._instructions_json='Rearrange indexes across nodes for optimal balance. Balance by: size, memory, requests, bucket/scope/collection diversity. '+replicaRuleP+rackExtraP+prioExtraP+' Prefer not moving very large indexes unless it significantly improves balance. Return your response as JSON matching _response_schema exactly. Each index entry MUST be a plain CSV string (e.g. "bucket,scope,collection,index,0,0,0,0,1,1,100,0,0") — do NOT wrap the string in extra quotes or escape quotes within it. In the "description" field, explain WHY this arrangement is better — reference specific index names, buckets, and nodes.';
-  topo._instructions_toon='This input is in TOON format (Token-Oriented Object Notation, see toonformat.dev). Each node key has a typed array header like "nodeName"[count]{field1,field2,...}: followed by CSV rows matching that header. Rearrange indexes across nodes for optimal balance. Balance by: size, memory, requests, bucket/scope/collection diversity. '+replicaRuleP+rackExtraP+prioExtraP+' Prefer not moving very large indexes unless it significantly improves balance. Return your response as JSON matching _response_schema exactly. Each index entry MUST be a plain CSV string (e.g. "bucket,scope,collection,index,0,0,0,0,1,1,100,0,0") — do NOT wrap the string in extra quotes or escape quotes within it. In the "description" field, explain WHY this arrangement is better — reference specific index names, buckets, and nodes.';
+  const strategyTextP=rebalanceMode==='performance'?'STRATEGY: Performance mode — the PRIMARY goal is to spread high-traffic (hot) indexes across different nodes to avoid hot-spots. Use requests (cumulative scan count), avgScanLatencyNs, totalScanDuration, numRowsReturned, and scanBytesRead fields to identify hot indexes. Two or more hot indexes should NOT be placed on the same node. Secondary goal: balance by size and memory. ':'STRATEGY: Greedy mode — balance indexes across nodes primarily by disk size, memory usage, and index count. Spread bucket/scope/collection diversity evenly. ';
+  topo._instructions_json=strategyTextP+'Rearrange indexes across nodes for optimal balance. '+replicaRuleP+rackExtraP+prioExtraP+' Prefer not moving very large indexes unless it significantly improves balance. Return your response as JSON matching _response_schema exactly. Each index entry MUST be a plain CSV string (e.g. "bucket,scope,collection,index,0,0,0,0,1,1,100,0,0") — do NOT wrap the string in extra quotes or escape quotes within it. In the "description" field, explain WHY this arrangement is better — reference specific index names, buckets, and nodes.';
+  topo._instructions_toon='This input is in TOON format (Token-Oriented Object Notation, see toonformat.dev). Each node key has a typed array header like "nodeName"[count]{field1,field2,...}: followed by CSV rows matching that header. '+strategyTextP+'Rearrange indexes across nodes for optimal balance. '+replicaRuleP+rackExtraP+prioExtraP+' Prefer not moving very large indexes unless it significantly improves balance. Return your response as JSON matching _response_schema exactly. Each index entry MUST be a plain CSV string (e.g. "bucket,scope,collection,index,0,0,0,0,1,1,100,0,0") — do NOT wrap the string in extra quotes or escape quotes within it. In the "description" field, explain WHY this arrangement is better — reference specific index names, buckets, and nodes.';
   topo._response_schema=buildResponseSchema(sampleNode,false);
   return topo;
 }
@@ -1487,7 +1496,9 @@ function computeRebalancePlan(){
       allIndexes.push({
         fullKey:idx.fullKey,name:idx.name,bucket:idx.bucket,scope:idx.scope,collection:idx.collection,
         disk_size:idx.disk_size||0,memory_used:idx.memory_used||0,items_count:idx.items_count||0,
-        num_requests:idx.num_requests||0,currentNode:node.nodeName,
+        num_requests:idx.num_requests||0,avg_scan_latency:idx.avg_scan_latency||0,
+        num_rows_returned:idx.num_rows_returned||0,total_scan_duration:idx.total_scan_duration||0,
+        currentNode:node.nodeName,
         _replicaNodes:idx._replicaNodes||[node.nodeName],_replicaTotal:idx._replicaTotal||1,_replicaIndex:idx._replicaIndex||1
       });
     });
@@ -1508,7 +1519,7 @@ function computeRebalancePlan(){
 
   // Track node totals
   const nodeTotals={};
-  nodeNames.forEach(n=>{nodeTotals[n]={disk:0,mem:0,count:0,buckets:{}}});
+  nodeNames.forEach(n=>{nodeTotals[n]={disk:0,mem:0,count:0,buckets:{},requests:0,scanLoad:0}});
 
   // Build set of rack zones already used by other replicas in this group
   function usedRacks(excludeNodes){
@@ -1538,13 +1549,29 @@ function computeRebalancePlan(){
     if(priorityIndexes.has(idx.fullKey)){
       priorityPenalty=t.mem/(1024*1024)*2;// 2 pts per MB of memory already on node
     }
-    return-(diskPenalty+countPenalty+bucketConcentration+priorityPenalty);
+    // Performance mode: also penalize placing hot indexes on already-hot nodes
+    let perfPenalty=0;
+    if(rebalanceMode==='performance'){
+      // Penalize nodes that already carry high request load
+      perfPenalty=t.requests*0.001;// 0.001 pts per request already assigned
+      // Additional penalty: accumulated scan load (requests × latency) on the node
+      perfPenalty+=t.scanLoad*0.01;
+    }
+    return-(diskPenalty+countPenalty+bucketConcentration+priorityPenalty+perfPenalty);
   }
 
-  // Sort replica groups: biggest first (by total disk of all replicas)
+  // Sort replica groups: biggest/hottest first
   const sortedGroups=Object.entries(replicaGroups).sort((a,b)=>{
     const sA=a[1].reduce((s,x)=>s+x.disk_size,0);
     const sB=b[1].reduce((s,x)=>s+x.disk_size,0);
+    if(rebalanceMode==='performance'){
+      // Composite weight: disk_size + weighted scan load (requests * avg_latency_ms) + request volume
+      const loadA=a[1].reduce((s,x)=>s+x.num_requests+(x.num_requests*(x.avg_scan_latency/1e6))*0.5,0);
+      const loadB=b[1].reduce((s,x)=>s+x.num_requests+(x.num_requests*(x.avg_scan_latency/1e6))*0.5,0);
+      const wA=sA+loadA*100;
+      const wB=sB+loadB*100;
+      return wB-wA;
+    }
     return sB-sA;
   });
 
@@ -1564,6 +1591,8 @@ function computeRebalancePlan(){
       assignment[bestNode].push({...idx,fromNode:idx.currentNode,toNode:bestNode});
       const t=nodeTotals[bestNode];
       t.disk+=idx.disk_size;t.mem+=idx.memory_used;t.count++;
+      t.requests+=idx.num_requests;
+      t.scanLoad+=idx.num_requests*(idx.avg_scan_latency/1e6);// requests × latency in ms
       const bk=idx.bucket+':'+idx.scope+':'+idx.collection;
       t.buckets[bk]=(t.buckets[bk]||0)+1;
     });
@@ -1661,6 +1690,36 @@ function renderMoveIt(){
   const deltaSign=scoreDelta>0?'+':'';
 
   let html='';
+
+  // File-based rebalance warning
+  html+=`<div class="alert alert-warning shadow-sm mb-4 text-xs">
+<svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-5 w-5" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+<div><b>NOTE:</b> If <b>file-based rebalance</b> is enabled on your cluster, <code>ALTER INDEX</code> with the <code>nodes</code> clause is <b>not supported</b> due to shard affinity constraints. See
+<a href="https://docs.couchbase.com/server/current/n1ql/n1ql-language-reference/alterindex.html" target="_blank" class="link link-primary">ALTER INDEX docs</a> and
+<a href="https://docs.couchbase.com/server/current/learn/clusters-and-availability/rebalance-and-index-service.html" target="_blank" class="link link-primary">Index Rebalance docs</a>.</div>
+</div>`;
+
+  // Greedy vs Performance toggle
+  html+=`<div class="card bg-base-100 shadow-sm mb-4"><div class="card-body p-3">
+<div class="flex items-center gap-4 flex-wrap">
+  <span class="text-sm font-bold">Placement Strategy:</span>
+  <div class="flex items-center gap-2">
+    <div class="tooltip tooltip-bottom" data-tip="Greedy: Balances indexes by size (disk) and count only. Best when all indexes have roughly equal query load.">
+      <label class="flex items-center gap-1 cursor-pointer">
+        <input type="radio" name="rebalance-mode" class="radio radio-sm radio-error" value="greedy" ${rebalanceMode==='greedy'?'checked':''} onchange="onRebalanceModeChange(this.value)">
+        <span class="text-xs font-semibold">Greedy</span>
+      </label>
+    </div>
+    <div class="tooltip tooltip-bottom" data-tip="Performance: Factors in scan requests, latency, and index size to spread hot (heavily used) indexes across nodes. Use when some indexes get disproportionately more traffic and cause hot-spots.">
+      <label class="flex items-center gap-1 cursor-pointer">
+        <input type="radio" name="rebalance-mode" class="radio radio-sm radio-success" value="performance" ${rebalanceMode==='performance'?'checked':''} onchange="onRebalanceModeChange(this.value)">
+        <span class="text-xs font-semibold">Performance</span>
+      </label>
+    </div>
+  </div>
+  <span class="badge badge-sm ${rebalanceMode==='greedy'?'badge-error':'badge-success'}">${rebalanceMode==='greedy'?'Size-balanced':'Load-balanced'}</span>
+</div>
+</div></div>`;
 
   // Score comparison card
   html+=`<div class="card bg-base-100 shadow-sm mb-4"><div class="card-body p-4">
@@ -1791,13 +1850,15 @@ function renderMoveIt(){
 <h3 class="font-bold text-sm mb-2">Proposed Moves (${plan.moves.length})</h3>
 <details class="mb-2"><summary class="text-xs text-base-content/50 cursor-pointer hover:text-base-content/70">Indexes that would be relocated to achieve better balance. <span class="link link-primary">How does it decide?</span></summary>
 <div class="bg-base-200 rounded-lg p-3 mt-2 text-xs text-base-content/70 space-y-2">
-  <p class="font-semibold text-base-content/80">Greedy Placement Algorithm</p>
-  <p>Indexes are sorted by total disk size (largest first) and placed one-by-one onto the node with the best score. Each node is scored using three penalty factors — <b>lower penalty = better placement</b>:</p>
+  <p class="font-semibold text-base-content/80">${rebalanceMode==='greedy'?'Greedy':'Performance'} Placement Algorithm</p>
+  <p>Indexes are sorted by ${rebalanceMode==='greedy'?'total disk size (largest first)':'a composite weight of disk size + scan requests + latency (hottest first)'} and placed one-by-one onto the node with the best score. Each node is scored using penalty factors — <b>lower penalty = better placement</b>:</p>
   <table class="table table-xs w-auto"><thead><tr class="bg-base-300"><th>Factor</th><th>Penalty Weight</th><th>What It Does</th></tr></thead><tbody>
     <tr><td class="font-semibold">Disk balance</td><td class="font-mono">1 pt per MB on node</td><td>Penalizes nodes that already have more disk usage</td></tr>
     <tr><td class="font-semibold">Index count</td><td class="font-mono">50 pts per index</td><td>Penalizes nodes that already have more indexes</td></tr>
     <tr><td class="font-semibold">Bucket/scope/collection concentration</td><td class="font-mono">200 pts per same-keyspace index</td><td>Penalizes placing another index from the same keyspace on a node that already has many from it</td></tr>
     <tr><td class="font-semibold">Priority memory affinity</td><td class="font-mono">2 pts per MB memory on node</td><td>For priority indexes, strongly prefers nodes with less memory load so the priority index gets more RAM</td></tr>
+    ${rebalanceMode==='performance'?`<tr class="bg-green-50"><td class="font-semibold">Request load</td><td class="font-mono">0.001 pts per request on node</td><td>Penalizes nodes that already serve more scan requests — spreads hot indexes apart</td></tr>
+    <tr class="bg-green-50"><td class="font-semibold">Scan load (requests × latency)</td><td class="font-mono">0.01 pts per scan-ms on node</td><td>Penalizes nodes with high cumulative scan work (requests × avg latency). Indexes with high latency contribute more weight</td></tr>`:''}
   </tbody></table>
   <p><b>Replica separation</b> is a hard constraint — replicas of the same index are <b>never</b> placed on the same node (excluded with <code>-Infinity</code> score).</p>
   <p><b>Rack/Zone awareness</b> — when rack zones are configured, replicas of the same index are <b>never</b> placed on the same rack (excluded with <code>-Infinity</code> score).</p>
@@ -2033,6 +2094,7 @@ function onPriorityToggle(cb){
   cb.closest('tr').className=cb.checked?'bg-green-50':'';
 }
 function applyPriorityAndRebalance(){renderMoveIt()}
+function onRebalanceModeChange(mode){rebalanceMode=mode;renderMoveIt()}
 function onRackZoneChange(input){nodeRackZones[input.dataset.node]=input.value.trim()}
 function applyRackZonesAndRebalance(){renderMoveIt()}
 function clearRackZones(){nodeRackZones={};renderMoveIt()}
