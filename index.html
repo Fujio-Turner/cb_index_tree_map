@@ -2544,7 +2544,8 @@ function showIndexStats(fullKey,nIdx){
   let h='';
 
   // Index Definition from System Indexes (if available)
-  const sysIdx=globalSystemFlat.find(s=>s.bucket===idx.bucket&&s.scope===idx.scope&&s.collection===idx.collection&&s.name===idx.name);
+  const baseName=idx.name.replace(/\s*\(replica\s*\d+\)$/,'');
+  const sysIdx=globalSystemFlat.find(s=>s.bucket===idx.bucket&&s.scope===idx.scope&&s.collection===idx.collection&&s.name===baseName);
   if(sysIdx){
     const createStmt=buildCreateIndex(sysIdx);
     const escapedStmt=createStmt.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
