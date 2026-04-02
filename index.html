@@ -46,7 +46,7 @@
     <select id="f-scope" class="select select-bordered select-xs w-40" onchange="applyFilters()" title="Filter by scope within a bucket"><option value="">All Scopes</option></select>
     <select id="f-collection" class="select select-bordered select-xs w-40" onchange="applyFilters()" title="Filter by collection within a scope"><option value="">All Collections</option></select>
     <select id="f-index" class="select select-bordered select-xs w-48" onchange="applyFilters()" title="Filter by index name"><option value="">All Indexes</option></select>
-    <select id="f-scan" class="select select-bordered select-xs w-52" onchange="applyFilters()" title="Filter indexes by scan history: All, Exclude Never Scanned, or Only Never Scanned">
+    <select id="f-scan" class="select select-bordered select-xs w-60" onchange="applyFilters()" title="Filter indexes by scan history: All, Exclude Never Scanned, Only Never Scanned, or by days-since-last-scan range">
       <option value="">All</option>
       <option value="exclude-never">Exclude Never Scanned</option>
       <option value="only-never">Only Never Scanned</option>
@@ -299,7 +299,8 @@ function getScanTime(item){if(item.last_known_scan_time)return item.last_known_s
 function wildcardMatch(pattern,str){const re=new RegExp('^'+pattern.replace(/[-\/\\^$+?.()|[\]{}]/g,'\\$&').replace(/\*/g,'.*')+'$','i');return re.test(str)}
 function getItemFields(item){if(item.keys&&item.keys.length)return getIndexFields(item.keys);const key=item.bucket+':'+item.scope+':'+item.collection+':'+item.name;const sys=globalSystemFlat.find(s=>s.fullKey===key||s.bucket+':'+s.scope+':'+s.collection+':'+s.name===key);if(sys&&sys.keys)return getIndexFields(sys.keys);return[]}
 function matchFieldsFilter(item,fieldPatterns){const fields=getItemFields(item);if(!fields.length)return false;return fieldPatterns.every(p=>fields.some(f=>wildcardMatch(p,f)))}
-function matchFilter(item,f){if(f.scan){const scanTime=getScanTime(item);const neverScanned=!scanTime||scanTime===0;if(f.scan==='exclude-never'&&neverScanned)return false;if(f.scan==='only-never'&&!neverScanned)return false}if(f.fields){const patterns=f.fields.split(',').map(s=>s.trim()).filter(Boolean);if(patterns.length&&!matchFieldsFilter(item,patterns))return false}return(!f.bucket||item.bucket===f.bucket)&&(!f.scope||item.scope===f.scope)&&(!f.collection||item.collection===f.collection)&&(!f.index||item.name===f.index)}
+const SCAN_DAY_RANGES=[{value:'days-1-7',label:'1-7 days',min:1,max:7},{value:'days-8-30',label:'8-30 days',min:8,max:30},{value:'days-31-90',label:'31-90 days',min:31,max:90},{value:'days-91-182',label:'91d-6mo',min:91,max:182},{value:'days-183-365',label:'6mo-1y',min:183,max:365},{value:'days-366-inf',label:'1y+',min:366,max:Infinity}];
+function matchFilter(item,f){if(f.scan){const scanTime=getScanTime(item);const neverScanned=!scanTime||scanTime===0;if(f.scan==='exclude-never'&&neverScanned)return false;if(f.scan==='only-never'&&!neverScanned)return false;const dr=SCAN_DAY_RANGES.find(r=>r.value===f.scan);if(dr){if(neverScanned)return false;const days=Math.floor((Date.now()-new Date(scanTime/1e6).getTime())/86400000);if(days<dr.min||days>dr.max)return false}}if(f.fields){const patterns=f.fields.split(',').map(s=>s.trim()).filter(Boolean);if(patterns.length&&!matchFieldsFilter(item,patterns))return false}return(!f.bucket||item.bucket===f.bucket)&&(!f.scope||item.scope===f.scope)&&(!f.collection||item.collection===f.collection)&&(!f.index||item.name===f.index)}
 
 // ===== FIELD AUTOCOMPLETE (uFuzzy) =====
 let fieldACIndex=-1;
@@ -417,7 +418,8 @@ function cascadeFilters(){
   const scanPool=idxPool;
   const neverCount=scanPool.filter(i=>{const t=getScanTime(i);return !t||t===0}).length;
   const scannedCount=scanPool.length-neverCount;
-  fScan.innerHTML=`<option value=""${curScan===''?' selected':''}>All (${scanPool.length})</option><option value="exclude-never"${curScan==='exclude-never'?' selected':''}>Exclude Never Scanned (${scannedCount})</option><option value="only-never"${curScan==='only-never'?' selected':''}>Only Never Scanned (${neverCount})</option>`;
+  const now=Date.now(),dayCounts={};SCAN_DAY_RANGES.forEach(r=>{dayCounts[r.value]=0});scanPool.forEach(i=>{const t=getScanTime(i);if(!t||t===0)return;const days=Math.floor((now-new Date(t/1e6).getTime())/86400000);SCAN_DAY_RANGES.forEach(r=>{if(days>=r.min&&days<=r.max)dayCounts[r.value]++})});
+  fScan.innerHTML=`<option value=""${curScan===''?' selected':''}>All (${scanPool.length})</option><option value="exclude-never"${curScan==='exclude-never'?' selected':''}>Exclude Never Scanned (${scannedCount})</option><option value="only-never"${curScan==='only-never'?' selected':''}>Only Never Scanned (${neverCount})</option><option disabled>── Days Since Last Scan ──</option>`+SCAN_DAY_RANGES.map(r=>`<option value="${r.value}"${curScan===r.value?' selected':''}>${r.label} (${dayCounts[r.value]})</option>`).join('');
   // Reset values that are no longer valid
   if(curS!==validS)fs.value=validS;
   if(curC!==validC)fc.value=validC;
