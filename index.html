@@ -733,10 +733,13 @@ function calcLumpinessScore(statsData){
   const totalMem=memPerNode.reduce((s,m)=>s+m,0);
   const idealMem=totalMem/nodeCount;
   const memImbalance=idealMem>0?memPerNode.reduce((s,m)=>s+Math.abs(m-idealMem),0)/(totalMem):0;
+  // 5. Per-node request & scan bytes totals (informational, not scored)
+  const reqsPerNode=src.map(n=>n.flat.reduce((s,x)=>s+(x.num_requests||0),0));
+  const scanBytesPerNode=src.map(n=>n.flat.reduce((s,x)=>s+(x.scan_bytes_read||0),0));
   // Weighted score: 30% count balance + 30% disk balance + 20% memory balance + 20% replica spread
   const rawImbalance=countImbalance*0.30+diskImbalance*0.30+memImbalance*0.20+replicaImbalance*0.20;
   const score=Math.max(0,Math.min(100,Math.round((1-rawImbalance)*100)));
-  return{score,countImbalance:Math.round(countImbalance*100),diskImbalance:Math.round(diskImbalance*100),memImbalance:Math.round(memImbalance*100),replicaImbalance:Math.round(replicaImbalance*100),idxCounts,diskPerNode,memPerNode,nodeNames:src.map(n=>n.nodeName)};
+  return{score,countImbalance:Math.round(countImbalance*100),diskImbalance:Math.round(diskImbalance*100),memImbalance:Math.round(memImbalance*100),replicaImbalance:Math.round(replicaImbalance*100),idxCounts,diskPerNode,memPerNode,reqsPerNode,scanBytesPerNode,nodeNames:src.map(n=>n.nodeName)};
 }
 
 function renderLumpinessCard(){
@@ -750,7 +753,7 @@ function renderLumpinessCard(){
   // Per-node breakdown rows
   let nodeRows='';
   lump.nodeNames.forEach((n,i)=>{
-    nodeRows+=`<tr class="text-xs"><td class="font-semibold">${n}</td><td class="font-mono text-right">${lump.idxCounts[i]}</td><td class="font-mono text-right">${fmt(lump.diskPerNode[i])}</td><td class="font-mono text-right">${fmt(lump.memPerNode[i])}</td></tr>`;
+    nodeRows+=`<tr class="text-xs"><td class="font-semibold">${n}</td><td class="font-mono text-right">${lump.idxCounts[i]}</td><td class="font-mono text-right">${fmt(lump.diskPerNode[i])}</td><td class="font-mono text-right">${fmt(lump.memPerNode[i])}</td><td class="font-mono text-right">${fmtN(lump.reqsPerNode[i])}</td><td class="font-mono text-right">${fmt(lump.scanBytesPerNode[i])}</td></tr>`;
   });
   return`<div class="card ${bgColor} shadow-sm mb-4"><div class="card-body p-4">
 <div class="flex items-center gap-4 flex-wrap">
@@ -769,7 +772,7 @@ function renderLumpinessCard(){
       <div class="tooltip tooltip-bottom" data-tip="How evenly RAM usage is spread across nodes. 0% = all nodes use roughly the same amount of memory for indexes."><div class="bg-base-100 rounded px-2 py-1 text-center cursor-help"><div class="text-[9px] text-base-content/50 underline decoration-dotted">Memory Imbalance</div><div class="font-mono font-bold">${lump.memImbalance}%</div></div></div>
       <div class="tooltip tooltip-bottom" data-tip="Percentage of replicated indexes that have multiple copies on the same node instead of spread across different nodes. 0% = all replicas are on separate nodes (ideal for HA)."><div class="bg-base-100 rounded px-2 py-1 text-center cursor-help"><div class="text-[9px] text-base-content/50 underline decoration-dotted">Replica Co-location</div><div class="font-mono font-bold">${lump.replicaImbalance}%</div></div></div>
     </div>
-    <table class="table table-xs w-full"><thead><tr class="bg-base-200/50"><th>Node</th><th class="text-right">Indexes</th><th class="text-right">Disk</th><th class="text-right">Memory</th></tr></thead><tbody>${nodeRows}</tbody></table>
+    <table class="table table-xs w-full"><thead><tr class="bg-base-200/50"><th>Node</th><th class="text-right">Indexes</th><th class="text-right">Disk</th><th class="text-right">Memory</th><th class="text-right" title="Total index scan requests received by this node">Requests In</th><th class="text-right" title="Total bytes read/returned by index scans on this node">Bytes Out</th></tr></thead><tbody>${nodeRows}</tbody></table>
   </div>
 </div>
 </div></div>`;
