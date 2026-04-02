@@ -1,5 +1,17 @@
 # Release Notes
 
+## v2.5.0 (2026-04-02)
+
+### New Features
+
+- **📐 New Index Size Estimator Tab** *(Beta)* — Paste a sample JSON document, a sample Document ID/Key, and a `CREATE INDEX` statement to estimate how much disk and memory a new index will consume **before you create it**. Uses actual Couchbase indexer internals — CollatJSON binary encoding, forward + back index dual-store layout, 2-byte entry trailers, and MOI skiplist node overhead (52 bytes) — to produce accurate size estimates for **Plasma**, **MOI / Nitro**, and **ForestDB** storage engines. Supports composite indexes, array indexes (`DISTINCT ARRAY`), partial indexes (`WHERE` clause), and nested field paths. Configurable parameters include number of documents, replicas, array length, and resident ratio, with an interactive results chart comparing all engines side-by-side.
+
+### Stats
+
+- Updated version badge to v2.5.0.
+
+---
+
 ## v2.4.0 (2026-04-02)
 
 ### New Features
