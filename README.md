@@ -80,6 +80,14 @@ Both plans show you a **before → after Lumpiness Score comparison**, a detaile
 - **AI Reasoning display** — Auto-formatted with color-coded node badges, bold metrics, and de-obfuscated names
 - Requires Stats API data with at least 2 nodes
 
+### 📐 New Index Size Estimator Tab *(Beta)*
+- **Paste a sample JSON document**, a sample Document ID/Key, and a `CREATE INDEX` statement to estimate how much disk and memory a new index will consume before you create it
+- Uses actual Couchbase indexer internals — **CollatJSON binary encoding**, forward + back index dual-store layout, 2-byte entry trailers, and MOI skiplist node overhead (52 bytes) — to produce accurate size estimates
+- **Storage engine comparison** — Estimate for **Plasma** (Enterprise Std GSI), **MOI / Nitro** (Enterprise Mem-Opt), and **ForestDB** (Community Edition) side-by-side, or pick one engine
+- **Configurable parameters** — Number of documents, number of replicas, array length, and resident ratio
+- **Interactive results chart** — Visual breakdown of estimated index size by engine with per-entry and total size details
+- Supports composite indexes, array indexes (`DISTINCT ARRAY`), partial indexes (`WHERE` clause), and nested field paths
+
 ### 🔧 Global Filters & UX
 - Filter everything by **Bucket**, **Scope**, **Collection**, **Index Name**, or **Node** — all tabs update instantly
 - **Multi-node selection** — Filter by one or more index nodes simultaneously
@@ -215,7 +223,7 @@ docker compose up --build    # rebuild after updating index.html
 
 ## 📦 Current Release
 
-**v2.4.0** — See [release notes](release_notes.md) for details.
+**v2.5.0** — See [release notes](release_notes.md) for details.
 
 ---
 
