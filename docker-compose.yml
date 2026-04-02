@@ -5,6 +5,7 @@ services:
       - "3000:3000"
     volumes:
       - cb-index-data:/app/data
+      - ./index.html:/app/index.html:ro
     restart: unless-stopped
 
 volumes:

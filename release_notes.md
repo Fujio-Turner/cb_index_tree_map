@@ -1,5 +1,34 @@
 # Release Notes
 
+## v2.3.3 (2026-04-02)
+
+### Bug Fixes
+
+- **🔧 "Unique Only" filter now correctly removes replica indexes** — The `dedup()` function and `buildReplicaMap()` were using raw index names that included `(replica N)` suffixes from the Stats API, causing every index to appear unique. Both now strip the suffix before keying, so `Unique Only` properly reduces 58 → 29 indexes. (#53)
+
+- **🔧 Filter dropdown counts update when "Unique Only" is toggled** — `cascadeFilters()` now applies `dedup()` to the filter pool when `Unique Only` is checked, so all dropdown counts (buckets, scopes, collections, indexes, scan filter) reflect unique-only totals.
+
+- **🔧 Index dropdown no longer lists `(replica 1)` duplicates** — The index filter dropdown now strips replica suffixes and deduplicates entries, showing clean index names.
+
+- **🔧 Index filter matches both original and replica entries** — `matchFilter()` now compares using stripped names so selecting `idx_field1` matches both `idx_field1` and `idx_field1 (replica 1)`.
+
+- **🔧 Replica badges hidden in Analysis tab when "Unique Only" is active** — Metric tables, Never Scanned table, and the "Show more" modal all suppress `(replica x)` badges when `Unique Only` is checked.
+
+### New Features
+
+- **🏷️ Primary index badge `[P]`** — Primary indexes (`#primary`) are now marked with a purple **P** badge in Stats, System Indexes, and Analysis tables, plus a `[P]` suffix in the index dropdown. Handles both `isPrimary` flag (system data) and `#primary` name pattern (stats data). (#53)
+
+- **🛠️ Dev debug panel (`?dev=true`)** — Append `?dev=true` to the URL to show a fixed black bar at the bottom of the page. Click to expand a diagnostic panel with filter state, data counts, dedup results, replica map, and sample items. "Copy All" button copies the full JSON dump to clipboard. (#53)
+
+- **📁 Dev volume mount in docker-compose** — `index.html` is now bind-mounted into the container so code changes are live on refresh without rebuilding the Docker image.
+
+### Stats
+
+- **Files changed:** 4 (`index.html`, `package.json`, `README.md`, `release_notes.md`, `docker-compose.yml`)
+- Updated version badge to v2.3.3.
+
+---
+
 ## v2.3.2 (2026-04-01)
 
 ### New Features
