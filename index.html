@@ -17,6 +17,11 @@
   .stats-table tr.highlighted{background:#fef3c7!important;outline:2px solid #f59e0b;outline-offset:-2px}
   .treemap-viewport{overflow:hidden;position:relative;border:1px solid #e5e7eb;border-radius:0.5rem}
   .treemap-viewport .chart-box{transform-origin:center center;transition:transform 0.2s ease}
+  .est-code-textarea{font-family:'Courier New',Courier,monospace;font-size:0.85rem;line-height:1.4;tab-size:2}
+  .est-valid{background:rgba(34,197,94,0.08)!important;border-color:rgba(34,197,94,0.4)!important}
+  .est-invalid{background:rgba(239,68,68,0.08)!important;border-color:rgba(239,68,68,0.4)!important}
+  .est-chart{width:100%;height:320px}
+  .est-tip{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;font-size:11px;font-weight:700;cursor:help;border:1.5px solid oklch(var(--bc)/.3);color:oklch(var(--bc)/.5);margin-left:5px;flex-shrink:0}
 </style>
 </head>
 <body class="bg-base-200 min-h-screen">
@@ -72,6 +77,7 @@
   <a role="tab" class="tab [--tab-bg:#eff6ff] [--tab-border-color:#3b82f6] text-blue-600 font-semibold" onclick="switchMain('stats',this)">Stats API</a>
   <a role="tab" class="tab [--tab-bg:#f0fdf4] [--tab-border-color:#22c55e] text-green-600 font-semibold" onclick="switchMain('analysis',this)">Analysis</a>
   <a role="tab" class="tab [--tab-bg:#fdf4ff] [--tab-border-color:#a855f7] text-purple-600 font-semibold" onclick="switchMain('moveit',this)">Index Placement Optimizer <span class="badge badge-info badge-xs text-white ml-1">Beta</span></a>
+  <a role="tab" class="tab [--tab-bg:#fff7ed] [--tab-border-color:#f97316] text-orange-600 font-semibold" onclick="switchMain('estimator',this)">New Index Estimator <span class="badge badge-info badge-xs text-white ml-1">Beta</span></a>
 </div>
 
 <!-- TAB 1: System Indexes -->
@@ -143,6 +149,244 @@
 <div id="panel-moveit" class="tab-panel p-6 hidden">
   <div id="moveit-content">
     <div class="text-center py-12 text-base-content/40">Load data in <b>Stats API</b> tab first (at least 2 nodes required).</div>
+  </div>
+</div>
+
+<!-- TAB 5: New Index Estimator -->
+<div id="panel-estimator" class="tab-panel p-6 hidden">
+
+  <!-- Info Alert -->
+  <div class="alert bg-info/10 border border-info/30 text-base-content mb-6 shadow-sm">
+    <svg xmlns="http://www.w3.org/2000/svg" class="stroke-info shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+    <div>
+      <p class="font-semibold">How it works</p>
+      <p class="text-sm">Paste a sample JSON document, a sample Document ID/Key, and a <code class="bg-info/20 px-1 rounded">CREATE INDEX</code> statement. This tool uses the actual Couchbase indexer internals — CollatJSON binary encoding, forward + back index dual-store layout, 2-byte entry trailers, and MOI skiplist node overhead (52 bytes) — to produce accurate size estimates for Plasma and Nitro engines.</p>
+    </div>
+  </div>
+
+  <!-- Inputs -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+    <div class="card bg-base-100 shadow-sm">
+      <div class="card-body">
+        <h2 class="card-title text-sm uppercase tracking-wider text-base-content/50 flex items-center">
+          Sample JSON Document
+          <span class="tooltip tooltip-right" data-tip="Paste a representative JSON document from your bucket. The tool will measure the byte size of each indexed field from this sample."><span class="est-tip">?</span></span>
+        </h2>
+        <textarea id="est-jsonInput" class="textarea textarea-bordered w-full h-56 est-code-textarea bg-base-200" placeholder='{"airline":"AA","name":"American Airlines",...}' oninput="estValidateJson()">{
+  "airline": "AA",
+  "name": "American Airlines",
+  "callsign": "AMERICAN",
+  "country": "United States",
+  "type": "airline",
+  "iata": "AA",
+  "icao": "AAL",
+  "id": 24,
+  "address": { "city": "Dallas", "state": "TX" },
+  "tags": ["major", "domestic", "international"]
+}</textarea>
+      </div>
+    </div>
+    <div class="card bg-base-100 shadow-sm">
+      <div class="card-body">
+        <h2 class="card-title text-sm uppercase tracking-wider text-base-content/50 flex items-center">
+          SQL++ Index Definition
+          <span class="tooltip tooltip-left" data-tip="Your CREATE INDEX statement. The tool extracts the indexed fields, keyspace name, and WHERE clause to calculate sizing."><span class="est-tip">?</span></span>
+        </h2>
+        <textarea id="est-indexInput" class="textarea textarea-bordered w-full h-56 est-code-textarea bg-base-200" placeholder="CREATE INDEX idx_name ON `bucket`(field1, field2) WHERE type = 'x'" oninput="estValidateIndex()">CREATE INDEX idx_airline ON `travel-sample`(name, address.city, DISTINCT ARRAY t FOR t IN tags END) WHERE type = 'airline'</textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- Document ID Input -->
+  <div class="card bg-base-100 shadow-sm mb-6">
+    <div class="card-body py-4">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
+        <div class="form-control">
+          <label class="label">
+            <span class="label-text font-medium flex items-center">
+              Sample Document ID / Key
+              <span class="tooltip tooltip-right" data-tip="Every GSI index entry stores the full document ID (meta().id). Longer keys increase index size. Paste a representative key so the tool can measure its actual byte length."><span class="est-tip">?</span></span>
+            </span>
+          </label>
+          <input id="est-docIdInput" type="text" class="input input-bordered w-full bg-base-200 font-mono text-sm" value="airline_24" placeholder="e.g. airline_24 or user::john.doe@example.com" />
+        </div>
+        <div class="flex items-center gap-3 pb-1">
+          <span class="text-sm text-base-content/50">Computed ID size:</span>
+          <span id="est-computedIdSize" class="badge badge-lg font-mono">10 bytes</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Parameters -->
+  <div class="card bg-base-100 shadow-sm mb-6">
+    <div class="card-body">
+      <h2 class="card-title text-sm uppercase tracking-wider text-base-content/50 mb-3">Sizing Parameters</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="form-control">
+          <label class="label">
+            <span class="label-text font-medium flex items-center">
+              Storage Engine
+              <span class="tooltip tooltip-right" data-tip="Plasma: Enterprise Edition disk-based standard GSI (LSS + B-tree pages). MOI/Nitro: Enterprise Edition memory-optimized (in-memory skiplist, 100% RAM). ForestDB: Community Edition disk-based (HB+-Trie, circular/append-only writes, higher fragmentation)."><span class="est-tip">?</span></span>
+            </span>
+          </label>
+          <select id="est-engineSelect" class="select select-bordered w-full" onchange="estOnEngineChange()">
+            <option value="all" selected>All Engines (Compare)</option>
+            <option value="plasma">Plasma — Enterprise Std GSI</option>
+            <option value="moi">MOI / Nitro — Enterprise Mem-Opt</option>
+            <option value="forestdb">ForestDB — Community Edition</option>
+          </select>
+        </div>
+        <div class="form-control">
+          <label class="label">
+            <span class="label-text font-medium flex items-center">
+              Number of Documents
+              <span class="tooltip tooltip-right" data-tip="Total number of documents in your bucket (or the subset that this index will cover). This is the main scaling factor for total index size."><span class="est-tip">?</span></span>
+            </span>
+          </label>
+          <input id="est-numDocsDisplay" type="text" class="input input-bordered w-full" value="1,000,000" />
+          <input id="est-numDocs" type="hidden" value="1000000" />
+        </div>
+        <div class="form-control">
+          <label class="label">
+            <span class="label-text font-medium flex items-center">
+              WHERE Selectivity
+              <span class="tooltip tooltip-left" data-tip="Percentage of documents that match the index's WHERE clause. If your index has no WHERE clause, leave at 100%. A partial index with WHERE type='airline' on a mixed bucket might only match 10% of docs."><span class="est-tip">?</span></span>
+            </span>
+          </label>
+          <div class="join w-full">
+            <input id="est-selectivity" type="number" class="input input-bordered join-item w-full" value="100" min="1" max="100" />
+            <span class="btn join-item no-animation bg-base-200 border-base-300 text-base-content/60">%</span>
+          </div>
+        </div>
+        <div class="form-control">
+          <label class="label">
+            <span class="label-text font-medium flex items-center">
+              Array Expansion Override
+              <span class="tooltip tooltip-left" data-tip="Auto-computed from array index expressions in your sample document. Override only if your sample isn't representative — this is the avg number of index entries per document created by array indexes. Leave 0 to auto-detect."><span class="est-tip">?</span></span>
+            </span>
+          </label>
+          <input id="est-arrayExpansion" type="number" class="input input-bordered w-full" value="0" min="0" step="1" placeholder="0 = auto-detect" />
+        </div>
+      </div>
+
+      <div class="divider my-2"></div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="form-control" id="est-grpPlasmaOverhead">
+          <label class="label">
+            <span class="label-text font-medium flex items-center">
+              Plasma LSS/Page Overhead
+              <span class="tooltip tooltip-right" data-tip="Plasma uses log-structured storage (LSS) with paged B-trees. This multiplier accounts for page headers, LSS segment overhead, delta chains, and cleaning fragmentation. Typical range 1.3×–2.0×."><span class="est-tip">?</span></span>
+            </span>
+          </label>
+          <input id="est-plasmaPageOverhead" type="number" class="input input-bordered w-full" value="1.5" min="1" max="3" step="0.1" />
+        </div>
+        <div class="form-control" id="est-grpWorkingSet">
+          <label class="label">
+            <span class="label-text font-medium flex items-center">
+              Disk Working Set in Memory
+              <span class="tooltip tooltip-right" data-tip="For disk-based engines (Plasma, ForestDB): the percentage of index data kept in memory as a working set. In DGM scenarios typically 20%. If the index fits entirely in RAM, set to 100%."><span class="est-tip">?</span></span>
+            </span>
+          </label>
+          <div class="join w-full">
+            <input id="est-workingSet" type="number" class="input input-bordered join-item w-full" value="20" min="1" max="100" />
+            <span class="btn join-item no-animation bg-base-200 border-base-300 text-base-content/60">%</span>
+          </div>
+        </div>
+        <div class="form-control" id="est-grpDiskMult">
+          <label class="label">
+            <span class="label-text font-medium flex items-center">
+              Disk Compaction Ratio
+              <span class="tooltip tooltip-right" data-tip="After compaction/cleaning, actual disk usage vs raw data. Accounts for write amplification, tombstones, and residual fragmentation. Typical 1.3×–2.0× for Plasma, 1.5×–2.5× for ForestDB (less efficient compaction)."><span class="est-tip">?</span></span>
+            </span>
+          </label>
+          <input id="est-diskMultiplier" type="number" class="input input-bordered w-full" value="1.5" min="1" max="5" step="0.1" />
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Calculate Button -->
+  <div class="flex justify-end mb-6">
+    <button class="btn bg-orange-600 hover:bg-orange-700 text-white border-none" onclick="estCalculate()">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+      Calculate Estimate
+    </button>
+  </div>
+
+  <!-- Results (hidden until calculated) -->
+  <div id="est-resultsSection" class="hidden">
+    <div class="card bg-base-100 shadow-sm mb-6">
+      <div class="card-body">
+        <h2 class="card-title text-sm uppercase tracking-wider text-base-content/50 mb-3 flex items-center">
+          Parsed Index Details
+          <span class="tooltip tooltip-right" data-tip="Shows the index name, target keyspace (bucket/collection), indexed key expressions, and WHERE clause extracted from your CREATE INDEX statement."><span class="est-tip">?</span></span>
+        </h2>
+        <div id="est-parsedInfo"></div>
+      </div>
+    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6" id="est-statCards"></div>
+    <div class="card bg-base-100 shadow-sm mb-6" id="est-formulasCard"></div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      <div class="card bg-base-100 shadow-sm">
+        <div class="card-body">
+          <h2 class="card-title text-sm uppercase tracking-wider text-base-content/50 flex items-center">
+            Size Breakdown per Entry
+            <span class="tooltip tooltip-left" data-tip="Shows how each component (metadata, document ID, and indexed field values) contributes to the total byte size of a single index entry."><span class="est-tip">?</span></span>
+          </h2>
+          <div id="est-chartPie" class="est-chart"></div>
+        </div>
+      </div>
+      <div class="card bg-base-100 shadow-sm">
+        <div class="card-body">
+          <h2 class="card-title text-sm uppercase tracking-wider text-base-content/50 flex items-center">
+            Engine Comparison
+            <span class="tooltip tooltip-left" data-tip="Compares all selected storage engines across raw data size, memory requirement, and disk usage."><span class="est-tip">?</span></span>
+          </h2>
+          <div id="est-chartBar" class="est-chart"></div>
+        </div>
+      </div>
+    </div>
+    <div class="card bg-base-100 shadow-sm mb-6">
+      <div class="card-body">
+        <h2 class="card-title text-sm uppercase tracking-wider text-base-content/50 flex items-center">
+          Index Size vs Document Count
+          <span class="tooltip tooltip-right" data-tip="Shows how index memory and disk requirements scale linearly as the number of documents grows."><span class="est-tip">?</span></span>
+        </h2>
+        <div id="est-chartLine" class="est-chart" style="height:360px;"></div>
+      </div>
+    </div>
+    <div class="card bg-base-100 shadow-sm mb-6">
+      <div class="card-body">
+        <h2 class="card-title text-sm uppercase tracking-wider text-base-content/50 mb-3 flex items-center">
+          Field-Level Sizing
+          <span class="tooltip tooltip-right" data-tip="Detailed breakdown of each indexed field: the expression from your index definition, its sample value from the JSON document, data type, and encoded byte size used in the estimate."><span class="est-tip">?</span></span>
+        </h2>
+        <div class="overflow-x-auto">
+          <table class="table table-zebra w-full" id="est-fieldTable">
+            <thead>
+              <tr class="bg-base-200">
+                <th>Field / Expression</th>
+                <th>Sample Value</th>
+                <th>Type</th>
+                <th>Raw Size (B)</th>
+                <th>
+                  CollatJSON (B)
+                  <span class="tooltip tooltip-left" data-tip="CollatJSON is Couchbase's sort-preserving binary encoding. Each value gets a 1-byte type tag + encoded payload + 1-byte 0x00 terminator."><span class="est-tip">?</span></span>
+                </th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Error Toast -->
+  <div id="est-errorToast" class="toast toast-end hidden">
+    <div class="alert alert-error"><span id="est-errorMsg"></span></div>
   </div>
 </div>
 
@@ -249,6 +493,7 @@ function switchMain(t,el){
   if(t==='stats'&&globalStatsFlat.length)renderStatsView();
   if(t==='analysis')renderAnalysis();
   if(t==='moveit')renderMoveIt();
+  if(t==='estimator')estInit();
   setTimeout(()=>activeCharts.forEach(c=>c.resize()),100);
 }
 function switchMetric(el){
@@ -3165,6 +3410,308 @@ function showIndexStats(fullKey,nIdx){
     }
   },50);
 }
+
+// ===== NEW INDEX ESTIMATOR (TAB 5) =====
+
+function estShowError(msg){const t=document.getElementById('est-errorToast');document.getElementById('est-errorMsg').textContent=msg;t.classList.remove('hidden');setTimeout(()=>t.classList.add('hidden'),5000)}
+
+function estFormatBytes(bytes){if(bytes===0)return'0 B';const units=['B','KB','MB','GB','TB'];const i=Math.min(Math.floor(Math.log(Math.abs(bytes))/Math.log(1024)),units.length-1);return(bytes/Math.pow(1024,i)).toFixed(2)+' '+units[i]}
+
+function estCollatJsonSize(val){if(val===null||val===undefined)return 2;const t=typeof val;if(t==='boolean')return 2;if(t==='number')return estCollatJsonNumberSize(val);if(t==='string')return estCollatJsonStringSize(val);if(Array.isArray(val)){let s=2;for(const el of val)s+=estCollatJsonSize(el);return s}if(t==='object'){let s=5;for(const[k,v]of Object.entries(val)){s+=estCollatJsonStringSize(k)+estCollatJsonSize(v)}return s}return 2}
+
+function estCollatJsonNumberSize(n){if(n===0)return 4;const digits=Number.isInteger(n)?Math.abs(n).toString().length:Math.abs(n).toString().replace('.','').replace(/^0+/,'').length;if(digits<=1)return 5;return 3+digits+1}
+
+function estCollatJsonStringSize(s){const utf8=new TextEncoder().encode(s);let escaped=utf8.length;for(const b of utf8){if(b===0)escaped++}return 1+escaped+1}
+
+function estRawSize(val){if(val===null||val===undefined)return 0;const t=typeof val;if(t==='boolean')return 1;if(t==='number')return 8;if(t==='string')return new TextEncoder().encode(val).length;return new TextEncoder().encode(JSON.stringify(val)).length}
+
+function estTokenizePath(path){const tokens=[];let i=0;while(i<path.length){if(path[i]==='`'){const end=path.indexOf('`',i+1);if(end===-1){tokens.push(path.substring(i+1));break}tokens.push(path.substring(i+1,end));i=end+1}else if(path[i]==='['){const end=path.indexOf(']',i+1);if(end===-1)break;tokens.push(path.substring(i+1,end));i=end+1}else if(path[i]==='.'||path[i]===' '){i++}else{let end=i;while(end<path.length&&path[end]!=='.'&&path[end]!=='['&&path[end]!=='`')end++;tokens.push(path.substring(i,end));i=end}}return tokens}
+
+function estResolveField(obj,path){const tokens=estTokenizePath(path);if(!tokens.length)return undefined;let cur=obj;for(const tok of tokens){if(cur==null||typeof cur!=='object')return undefined;if(Array.isArray(cur)&&/^\d+$/.test(tok)){cur=cur[parseInt(tok,10)]}else{cur=cur[tok]}}return cur}
+
+function estDisplayField(field){return field.replace(/`/g,'')}
+function estTypeLabel(val){if(val===null||val===undefined)return'null/missing';if(Array.isArray(val))return'array';return typeof val}
+
+function estFormatNumberWithCommas(n){return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g,',')}
+
+function estSetupNumDocsInput(){const display=document.getElementById('est-numDocsDisplay'),hidden=document.getElementById('est-numDocs');display.addEventListener('input',function(){const raw=this.value.replace(/,/g,'').replace(/[^\d]/g,'');hidden.value=raw;const pos=this.selectionStart,oldLen=this.value.length;this.value=raw?estFormatNumberWithCommas(raw):'';const newLen=this.value.length;this.setSelectionRange(pos+(newLen-oldLen),pos+(newLen-oldLen))})}
+
+function estSetupDocIdInput(){const input=document.getElementById('est-docIdInput'),badge=document.getElementById('est-computedIdSize');function update(){badge.textContent=new TextEncoder().encode(input.value).length+' bytes'}input.addEventListener('input',update);update()}
+
+function estParseIndex(sql){
+  const s=sql.trim().replace(/\s+/g,' ');
+  const nameMatch=s.match(/CREATE\s+INDEX\s+(`[^`]+`|[^\s(]+)/i);
+  const indexName=nameMatch?nameMatch[1].replace(/`/g,''):'unknown';
+  const ksMatch=s.match(/ON\s+(`[^`]+`|[^\s(]+)/i);
+  const keyspace=ksMatch?ksMatch[1].replace(/`/g,''):'unknown';
+  let keyExpressions=[];
+  const onIdx=s.search(/ON\s+(`[^`]+`|[^\s(]+)\s*\(/i);
+  if(onIdx!==-1){const afterOn=s.substring(onIdx);const parenStart=afterOn.indexOf('(');if(parenStart!==-1){let depth=0,end=-1;for(let i=parenStart;i<afterOn.length;i++){if(afterOn[i]==='(')depth++;else if(afterOn[i]===')'){depth--;if(depth===0){end=i;break}}}if(end!==-1){const inner=afterOn.substring(parenStart+1,end).trim();let parts=[],d=0,cur='';for(let i=0;i<inner.length;i++){const c=inner[i];if(c==='(')d++;else if(c===')')d--;else if(c===','&&d===0){parts.push(cur.trim());cur='';continue}cur+=c}if(cur.trim())parts.push(cur.trim());keyExpressions=parts}}}
+  const whereMatch=s.match(/WHERE\s+(.+?)(\s+WITH\s+|\s+USING\s+|$)/i);
+  const whereClause=whereMatch?whereMatch[1].trim():null;
+  function splitTopLevel(s){const parts=[];let d=0,cur='';for(let i=0;i<s.length;i++){if(s[i]==='(')d++;else if(s[i]===')')d--;else if(s[i]===','&&d===0){parts.push(cur.trim());cur='';continue}cur+=s[i]}if(cur.trim())parts.push(cur.trim());return parts}
+  const resolvedFields=keyExpressions.map(expr=>{
+    if(expr.match(/^meta\s*\(\s*\)\s*\.\s*id$/i))return{expr,field:'meta().id',isArray:false,isMeta:true};
+    const fullArrMatch=expr.match(/^(DISTINCT|ALL)\s+ARRAY\s+(.+?)\s+FOR\s+(\w+)\s+(?:IN|WITHIN)\s+(.+?)\s+(?:WHEN\s+.+?\s+)?END$/i);
+    if(fullArrMatch){const mode=fullArrMatch[1].toUpperCase(),varExpr=fullArrMatch[2].trim(),varName=fullArrMatch[3].trim(),arrayField=fullArrMatch[4].trim();const fkMatch=varExpr.match(/^FLATTEN_KEYS\s*\((.+)\)$/i);let subExprs;if(fkMatch){subExprs=splitTopLevel(fkMatch[1]).map(a=>a.replace(/\s+(ASC|DESC|INCLUDE\s+MISSING)\s*/gi,'').trim())}else{subExprs=[varExpr]}return{expr,field:arrayField,isArray:true,isMeta:false,arrayMode:mode,arrayVar:varName,arraySubExprs:subExprs}}
+    const simpleArrMatch=expr.match(/^(DISTINCT|ALL)\s+(.+)$/i);
+    if(simpleArrMatch)return{expr,field:simpleArrMatch[2].trim(),isArray:true,isMeta:false,arrayMode:simpleArrMatch[1].toUpperCase(),arrayVar:null,arraySubExprs:null};
+    return{expr,field:expr.trim(),isArray:false,isMeta:false};
+  });
+  return{indexName,keyspace,keyExpressions,resolvedFields,whereClause};
+}
+
+function estCalculate(){
+  let doc;
+  try{doc=JSON.parse(document.getElementById('est-jsonInput').value)}catch(e){estShowError('Invalid JSON document: '+e.message);return}
+  const indexSql=document.getElementById('est-indexInput').value.trim();
+  if(!indexSql){estShowError('Please enter a CREATE INDEX statement.');return}
+  const parsed=estParseIndex(indexSql);
+  if(parsed.resolvedFields.length===0){estShowError('Could not parse any index key expressions.');return}
+  const numDocs=parseInt(document.getElementById('est-numDocs').value)||1000000;
+  const docIdVal=document.getElementById('est-docIdInput').value;
+  const D=new TextEncoder().encode(docIdVal).length||32;
+  const plasmaPageOverhead=parseFloat(document.getElementById('est-plasmaPageOverhead').value)||1.5;
+  const selectivity=(parseFloat(document.getElementById('est-selectivity').value)||100)/100;
+  const workingSet=(parseFloat(document.getElementById('est-workingSet').value)||20)/100;
+  const diskMult=parseFloat(document.getElementById('est-diskMultiplier').value)||1.5;
+  const arrayExpansionOverride=parseInt(document.getElementById('est-arrayExpansion').value)||0;
+
+  const fieldRows=[];let hasArrayIndex=false;let autoArrayExpansion=1;
+  function resolveVarExpr(element,varName,varExpr){const cleanExpr=varExpr.replace(/`/g,'').trim();if(cleanExpr===varName)return element;const prefix=varName+'.';if(cleanExpr.startsWith(prefix)||cleanExpr.startsWith(varName+'[')){const subPath=cleanExpr.substring(varName.length+(cleanExpr[varName.length]==='.'?1:0));if(element!=null&&typeof element==='object')return estResolveField(element,subPath)}return element}
+
+  parsed.resolvedFields.forEach(rf=>{
+    if(rf.isMeta){const metaVal=docIdVal;fieldRows.push({expr:rf.expr,field:rf.field,value:metaVal,type:'string (meta().id)',rawSize:new TextEncoder().encode(metaVal).length,collatSize:estCollatJsonStringSize(metaVal),isArray:false,arrayInfo:null});return}
+    if(rf.isArray){hasArrayIndex=true;const arr=estResolveField(doc,rf.field);if(!Array.isArray(arr)||arr.length===0){fieldRows.push({expr:rf.expr,field:rf.field,value:arr,type:'array (empty/missing)',rawSize:0,collatSize:2,isArray:true,arrayInfo:{count:0,mode:rf.arrayMode||'DISTINCT',perElement:'—'}});return}
+    let indexedValues;if(rf.arraySubExprs){if(rf.arraySubExprs.length===1){indexedValues=arr.map(el=>resolveVarExpr(el,rf.arrayVar,rf.arraySubExprs[0]))}else{indexedValues=arr.map(el=>rf.arraySubExprs.map(se=>resolveVarExpr(el,rf.arrayVar,se)))}}else{indexedValues=arr}
+    const mode=rf.arrayMode||'DISTINCT';let effectiveValues=indexedValues;if(mode==='DISTINCT'){const seen=new Set();effectiveValues=indexedValues.filter(v=>{const key=JSON.stringify(v);if(seen.has(key))return false;seen.add(key);return true})}
+    const elemCount=effectiveValues.length;autoArrayExpansion=Math.max(autoArrayExpansion,elemCount);
+    let avgCollat,avgRaw;if(rf.arraySubExprs&&rf.arraySubExprs.length>1){avgCollat=effectiveValues.reduce((sum,subVals)=>sum+subVals.reduce((s,v)=>s+estCollatJsonSize(v),0),0)/effectiveValues.length;avgRaw=effectiveValues.reduce((sum,subVals)=>sum+subVals.reduce((s,v)=>s+estRawSize(v),0),0)/effectiveValues.length}else{avgCollat=effectiveValues.reduce((s,v)=>s+estCollatJsonSize(v),0)/effectiveValues.length;avgRaw=effectiveValues.reduce((s,v)=>s+estRawSize(v),0)/effectiveValues.length}
+    fieldRows.push({expr:rf.expr,field:rf.field,value:effectiveValues.length<=5?effectiveValues:effectiveValues.slice(0,3),type:`array (${mode}, ${elemCount} entries)`,rawSize:Math.ceil(avgRaw),collatSize:Math.ceil(avgCollat),isArray:true,arrayInfo:{count:elemCount,mode,perElement:Math.ceil(avgCollat)+'B avg'}});return}
+    const val=estResolveField(doc,rf.field);fieldRows.push({expr:rf.expr,field:rf.field,value:val,type:estTypeLabel(val),rawSize:estRawSize(val),collatSize:estCollatJsonSize(val),isArray:false,arrayInfo:null});
+  });
+
+  const arrayExpansion=arrayExpansionOverride>0?arrayExpansionOverride:autoArrayExpansion;
+  const isComposite=parsed.resolvedFields.length>1;
+  let K_enc;if(isComposite){K_enc=2;for(const fr of fieldRows)K_enc+=fr.collatSize}else{K_enc=fieldRows[0]?fieldRows[0].collatSize:0}
+  const numEntries=Math.round(numDocs*selectivity*arrayExpansion);
+  const TRAILER=hasArrayIndex?4:2;const fwdEntrySize=K_enc+D+TRAILER;
+  const plasmaBackEntry=D+K_enc+2;const moiBackEntry=D+2;
+  const plasmaRawPerDoc=fwdEntrySize+plasmaBackEntry;const moiRawPerDoc=fwdEntrySize+moiBackEntry;
+  const MOI_NODE_OVERHEAD=52;
+  const forestdbBackEntry=plasmaBackEntry;const forestdbRawPerDoc=fwdEntrySize+forestdbBackEntry;
+  const FORESTDB_OVERHEAD=2.0;const FORESTDB_COMPACTION=2.0;
+  const plasmaRawTotal=numEntries*plasmaRawPerDoc;const plasmaWithOverhead=plasmaRawTotal*plasmaPageOverhead;const plasmaMem=plasmaWithOverhead*workingSet;const plasmaDisk=plasmaWithOverhead*diskMult;
+  const moiRawTotal=numEntries*moiRawPerDoc;const moiMemTotal=numEntries*(moiRawPerDoc+MOI_NODE_OVERHEAD);
+  const forestdbRawTotal=numEntries*forestdbRawPerDoc;const forestdbWithOverhead=forestdbRawTotal*FORESTDB_OVERHEAD;const forestdbMem=forestdbWithOverhead*workingSet;const forestdbDisk=forestdbWithOverhead*FORESTDB_COMPACTION;
+
+  const engine=document.getElementById('est-engineSelect').value;
+  document.getElementById('est-resultsSection').classList.remove('hidden');
+
+  // Parsed info
+  document.getElementById('est-parsedInfo').innerHTML=`
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div><span class="font-semibold text-base-content/40 text-xs uppercase">Index Name</span><br/><code class="text-error font-semibold">${parsed.indexName}</code></div>
+      <div><span class="font-semibold text-base-content/40 text-xs uppercase">Keyspace</span><br/><code class="text-base-content/70">${parsed.keyspace}</code></div>
+      <div><span class="font-semibold text-base-content/40 text-xs uppercase">WHERE</span><br/><code class="text-base-content/70">${parsed.whereClause||'—'}</code></div>
+    </div>
+    <div class="mt-3"><span class="font-semibold text-base-content/40 text-xs uppercase">Indexed Keys</span><br/>${parsed.keyExpressions.map(k=>`<kbd class="kbd kbd-sm mr-1 mb-1">${k}</kbd>`).join('')}</div>
+    <div class="mt-2"><span class="font-semibold text-base-content/40 text-xs uppercase">Document ID</span><br/><kbd class="kbd kbd-sm">${docIdVal}</kbd><span class="text-xs text-base-content/40 ml-2">(${D} bytes raw)</span></div>
+    <div class="mt-3 p-3 bg-base-200 rounded-lg text-xs text-base-content/60 font-mono leading-relaxed">
+      <span class="font-semibold text-base-content/50 uppercase text-[10px] tracking-wider">Wire Format (per entry)</span><br/>
+      <span class="text-blue-600">[CollatJSON key: ${K_enc}B]</span> <span class="text-warning">[DocID: ${D}B]</span> <span class="text-base-content/40">[Trailer: ${TRAILER}B]</span> = <span class="font-bold">${fwdEntrySize}B</span> forward entry
+      ${isComposite?'<br/><span class="text-base-content/40 text-[10px]">↳ Composite key wrapped as CollatJSON array</span>':''}
+    </div>`;
+
+  // Stat cards
+  const showPlasma=engine==='all'||engine==='plasma';const showMoi=engine==='all'||engine==='moi';const showFdb=engine==='all'||engine==='forestdb';
+  document.getElementById('est-statCards').innerHTML=`
+    <div class="stat bg-base-100 shadow-sm rounded-2xl">
+      <div class="stat-title text-base-content/50 flex items-center">Index Entries<span class="tooltip tooltip-right" data-tip="Total entries = docs × selectivity × array expansion."><span class="est-tip">?</span></span></div>
+      <div class="stat-value text-2xl">${numEntries.toLocaleString()}</div>
+      <div class="stat-desc">${selectivity<1?(selectivity*100).toFixed(0)+'% selectivity':'All documents'}${arrayExpansion>1?' × '+arrayExpansion+' array entries/doc':''}</div>
+    </div>
+    <div class="stat bg-base-100 shadow-sm rounded-2xl">
+      <div class="stat-title text-base-content/50 flex items-center">Fwd Entry<span class="tooltip tooltip-right" data-tip="Forward index entry size."><span class="est-tip">?</span></span></div>
+      <div class="stat-value text-2xl">${fwdEntrySize} B</div>
+      <div class="stat-desc">Key ${K_enc}B + ID ${D}B + Trailer ${TRAILER}B</div>
+    </div>
+    ${showPlasma?`<div class="stat bg-base-100 shadow-sm rounded-2xl border border-error/30">
+      <div class="stat-title text-base-content/50 flex items-center"><span class="w-2 h-2 rounded-full bg-error mr-2"></span>Plasma (EE Std)</div>
+      <div class="stat-value text-2xl text-error">${estFormatBytes(plasmaDisk)}</div>
+      <div class="stat-desc">Disk | Mem: ${estFormatBytes(plasmaMem)}</div>
+    </div>`:''}
+    ${showMoi?`<div class="stat bg-base-100 shadow-sm rounded-2xl border border-info/30">
+      <div class="stat-title text-base-content/50 flex items-center"><span class="w-2 h-2 rounded-full bg-info mr-2"></span>MOI / Nitro (EE)</div>
+      <div class="stat-value text-2xl text-info">${estFormatBytes(moiMemTotal)}</div>
+      <div class="stat-desc">Memory only | Raw: ${estFormatBytes(moiRawTotal)}</div>
+    </div>`:''}
+    ${showFdb?`<div class="stat bg-base-100 shadow-sm rounded-2xl border border-warning/30">
+      <div class="stat-title text-base-content/50 flex items-center"><span class="w-2 h-2 rounded-full bg-warning mr-2"></span>ForestDB (CE)</div>
+      <div class="stat-value text-2xl text-warning">${estFormatBytes(forestdbDisk)}</div>
+      <div class="stat-desc">Disk | Mem: ${estFormatBytes(forestdbMem)}</div>
+    </div>`:''}`;
+
+  // Formulas
+  let formulaPanels='';
+  if(showPlasma)formulaPanels+=`<div><h3 class="font-semibold text-sm text-error mb-2 flex items-center"><span class="w-2 h-2 rounded-full bg-error mr-2"></span>Plasma (Enterprise Std GSI)</h3><div class="bg-error/5 rounded-lg p-3 text-xs font-mono space-y-1 leading-relaxed"><div><span class="text-base-content/40">Forward entry:</span> K_enc(${K_enc}) + D(${D}) + trailer(${TRAILER}) = <b>${fwdEntrySize}B</b></div><div><span class="text-base-content/40">Back entry:</span> D(${D}) + K_enc(${K_enc}) + count(2) = <b>${plasmaBackEntry}B</b></div><div class="border-t border-base-300 pt-1"><span class="text-base-content/40">Raw per doc:</span> ${fwdEntrySize} + ${plasmaBackEntry} = <b>${plasmaRawPerDoc}B</b></div><div><span class="text-base-content/40">Total raw:</span> ${numEntries.toLocaleString()} × ${plasmaRawPerDoc} = <b>${estFormatBytes(plasmaRawTotal)}</b></div><div><span class="text-base-content/40">+ LSS/page overhead (×${plasmaPageOverhead}):</span> <b>${estFormatBytes(plasmaWithOverhead)}</b></div><div><span class="text-base-content/40">Memory (${(workingSet*100).toFixed(0)}% working set):</span> <b>${estFormatBytes(plasmaMem)}</b></div><div><span class="text-base-content/40">Disk (×${diskMult} compaction):</span> <b class="text-error">${estFormatBytes(plasmaDisk)}</b></div></div></div>`;
+  if(showMoi)formulaPanels+=`<div><h3 class="font-semibold text-sm text-info mb-2 flex items-center"><span class="w-2 h-2 rounded-full bg-info mr-2"></span>MOI / Nitro (Enterprise Mem-Opt)</h3><div class="bg-info/5 rounded-lg p-3 text-xs font-mono space-y-1 leading-relaxed"><div><span class="text-base-content/40">Forward entry:</span> K_enc(${K_enc}) + D(${D}) + trailer(${TRAILER}) = <b>${fwdEntrySize}B</b></div><div><span class="text-base-content/40">Back entry (hash):</span> D(${D}) + len(2) = <b>${moiBackEntry}B</b></div><div class="border-t border-base-300 pt-1"><span class="text-base-content/40">Raw per doc:</span> ${fwdEntrySize} + ${moiBackEntry} = <b>${moiRawPerDoc}B</b></div><div><span class="text-base-content/40">Node overhead:</span> Item(12) + NodeMM(24) + ptrs(~16) = <b>52B</b></div><div><span class="text-base-content/40">Total per doc:</span> ${moiRawPerDoc} + 52 = <b>${moiRawPerDoc+MOI_NODE_OVERHEAD}B</b></div><div><span class="text-base-content/40">Total memory:</span> ${numEntries.toLocaleString()} × ${moiRawPerDoc+MOI_NODE_OVERHEAD} = <b class="text-info">${estFormatBytes(moiMemTotal)}</b></div><div><span class="text-base-content/40">Disk:</span> <b>0 B</b> <span class="text-base-content/40">(100% in-memory)</span></div></div></div>`;
+  if(showFdb)formulaPanels+=`<div><h3 class="font-semibold text-sm text-warning mb-2 flex items-center"><span class="w-2 h-2 rounded-full bg-warning mr-2"></span>ForestDB (Community Edition)</h3><div class="bg-warning/5 rounded-lg p-3 text-xs font-mono space-y-1 leading-relaxed"><div><span class="text-base-content/40">Forward entry:</span> K_enc(${K_enc}) + D(${D}) + trailer(${TRAILER}) = <b>${fwdEntrySize}B</b></div><div><span class="text-base-content/40">Back entry:</span> D(${D}) + K_enc(${K_enc}) + count(2) = <b>${forestdbBackEntry}B</b></div><div class="border-t border-base-300 pt-1"><span class="text-base-content/40">Raw per doc:</span> ${fwdEntrySize} + ${forestdbBackEntry} = <b>${forestdbRawPerDoc}B</b></div><div><span class="text-base-content/40">Total raw:</span> ${numEntries.toLocaleString()} × ${forestdbRawPerDoc} = <b>${estFormatBytes(forestdbRawTotal)}</b></div><div><span class="text-base-content/40">+ HB+-Trie/WAL overhead (×${FORESTDB_OVERHEAD}):</span> <b>${estFormatBytes(forestdbWithOverhead)}</b></div><div><span class="text-base-content/40">Memory (${(workingSet*100).toFixed(0)}% working set):</span> <b>${estFormatBytes(forestdbMem)}</b></div><div><span class="text-base-content/40">Disk (×${FORESTDB_COMPACTION} compaction):</span> <b class="text-warning">${estFormatBytes(forestdbDisk)}</b></div></div></div>`;
+  document.getElementById('est-formulasCard').innerHTML=`<div class="card-body"><h2 class="card-title text-sm uppercase tracking-wider text-base-content/50 mb-3 flex items-center">Calculation Breakdown<span class="tooltip tooltip-right" data-tip="Exact formulas from Couchbase indexer source code."><span class="est-tip">?</span></span></h2><div class="grid grid-cols-1 ${engine==='all'?'lg:grid-cols-3':'lg:grid-cols-1 max-w-2xl'} gap-6">${formulaPanels}</div></div>`;
+
+  // Field table
+  const tbody=document.querySelector('#est-fieldTable tbody');
+  tbody.innerHTML=`<tr class="bg-warning/10"><td><code>meta().id</code></td><td class="max-w-xs truncate"><code class="text-xs">"${docIdVal}"</code></td><td><span class="badge badge-outline badge-sm">string (doc key)</span></td><td class="font-mono">${D}</td><td class="font-mono text-base-content/40">${D} <span class="text-[10px]">(stored raw)</span></td></tr>`+fieldRows.map(r=>`<tr class="${r.isArray?'bg-secondary/10':''}"><td><code>${r.expr}</code>${r.arrayInfo?`<br/><span class="text-[10px] text-secondary">${r.arrayInfo.mode} · ${r.arrayInfo.count} entries · ${r.arrayInfo.perElement}</span>`:''}</td><td class="max-w-xs truncate"><code class="text-xs">${JSON.stringify(r.value)}${r.isArray&&r.arrayInfo&&r.arrayInfo.count>5?' …':''}</code></td><td><span class="badge badge-outline badge-sm ${r.isArray?'badge-secondary':''}">${r.type}</span></td><td class="font-mono">${r.rawSize}</td><td class="font-mono font-semibold">${r.collatSize}</td></tr>`).join('');
+
+  // Charts
+  const textColor=getComputedStyle(document.documentElement).getPropertyValue('color')||'#475569';const splitColor='#e5e7eb';
+
+  const pieChart=echarts.init(document.getElementById('est-chartPie'));activeCharts.push(pieChart);
+  pieChart.setOption({tooltip:{trigger:'item',formatter:'{b}: {c} bytes ({d}%)'},color:['#3b82f6','#ef4444','#f59e0b','#10b981','#8b5cf6','#94a3b8','#ec4899'],series:[{type:'pie',radius:['40%','70%'],avoidLabelOverlap:true,itemStyle:{borderRadius:6,borderColor:'#fff',borderWidth:2},data:[...fieldRows.map(r=>({value:r.collatSize,name:estDisplayField(r.field)+' (CollatJSON)'})),{value:D,name:'Document ID'},{value:TRAILER,name:'Entry Trailer'},...(isComposite?[{value:2,name:'Array Wrapper'}]:[])]}]});
+
+  const barChart=echarts.init(document.getElementById('est-chartBar'));activeCharts.push(barChart);
+  const barSeries=[],barColors=[];
+  if(showPlasma){barSeries.push({name:'Plasma (EE Std)',type:'bar',data:[plasmaRawTotal,plasmaMem,plasmaDisk]});barColors.push('#ef4444')}
+  if(showMoi){barSeries.push({name:'MOI / Nitro (EE)',type:'bar',data:[moiRawTotal,moiMemTotal,0]});barColors.push('#3b82f6')}
+  if(showFdb){barSeries.push({name:'ForestDB (CE)',type:'bar',data:[forestdbRawTotal,forestdbMem,forestdbDisk]});barColors.push('#f59e0b')}
+  barChart.setOption({tooltip:{trigger:'axis',formatter:params=>params.map(p=>`${p.seriesName}: ${estFormatBytes(p.value)}`).join('<br/>')},legend:{textStyle:{fontSize:11}},xAxis:{type:'category',data:['Raw Data','Memory','Disk']},yAxis:{type:'value',axisLabel:{formatter:v=>estFormatBytes(v)},splitLine:{lineStyle:{color:splitColor}}},color:barColors,series:barSeries});
+
+  const lineChart=echarts.init(document.getElementById('est-chartLine'));activeCharts.push(lineChart);
+  const steps=10,xData=[],lineData={};
+  if(showPlasma){lineData.plasmaMem=[];lineData.plasmaDisk=[]}if(showMoi){lineData.moiMem=[]}if(showFdb){lineData.fdbMem=[];lineData.fdbDisk=[]}
+  for(let i=1;i<=steps;i++){const n=Math.round((numDocs/steps)*i*selectivity*arrayExpansion);xData.push(estFormatNumberWithCommas(Math.round((numDocs/steps)*i)));if(showPlasma){lineData.plasmaMem.push(Math.round(n*plasmaRawPerDoc*plasmaPageOverhead*workingSet));lineData.plasmaDisk.push(Math.round(n*plasmaRawPerDoc*plasmaPageOverhead*diskMult))}if(showMoi){lineData.moiMem.push(Math.round(n*(moiRawPerDoc+MOI_NODE_OVERHEAD)))}if(showFdb){lineData.fdbMem.push(Math.round(n*forestdbRawPerDoc*FORESTDB_OVERHEAD*workingSet));lineData.fdbDisk.push(Math.round(n*forestdbRawPerDoc*FORESTDB_OVERHEAD*FORESTDB_COMPACTION))}}
+  const lineSeries=[],lineColors=[];
+  if(showPlasma){lineSeries.push({name:'Plasma Memory',type:'line',data:lineData.plasmaMem,smooth:true});lineSeries.push({name:'Plasma Disk',type:'line',data:lineData.plasmaDisk,smooth:true,areaStyle:{opacity:0.06}});lineColors.push('#ef4444','#b91c1c')}
+  if(showMoi){lineSeries.push({name:'MOI / Nitro Memory',type:'line',data:lineData.moiMem,smooth:true});lineColors.push('#3b82f6')}
+  if(showFdb){lineSeries.push({name:'ForestDB Memory',type:'line',data:lineData.fdbMem,smooth:true});lineSeries.push({name:'ForestDB Disk',type:'line',data:lineData.fdbDisk,smooth:true,areaStyle:{opacity:0.06}});lineColors.push('#f59e0b','#d97706')}
+  lineChart.setOption({tooltip:{trigger:'axis',formatter:params=>params.map(p=>`${p.seriesName}: ${estFormatBytes(p.value)}`).join('<br/>')},legend:{textStyle:{fontSize:11}},xAxis:{type:'category',data:xData,axisLabel:{rotate:30},name:'Documents'},yAxis:{type:'value',axisLabel:{formatter:v=>estFormatBytes(v)},splitLine:{lineStyle:{color:splitColor}}},color:lineColors,series:lineSeries});
+
+  window.addEventListener('resize',()=>{pieChart.resize();barChart.resize();lineChart.resize()});
+  document.getElementById('est-resultsSection').scrollIntoView({behavior:'smooth'});
+}
+
+function estOnEngineChange(){
+  const engine=document.getElementById('est-engineSelect').value;
+  const showDiskFields=engine!=='moi';
+  const showPlasmaOverhead=engine==='all'||engine==='plasma';
+  document.getElementById('est-grpPlasmaOverhead').style.display=showPlasmaOverhead?'':'none';
+  document.getElementById('est-grpWorkingSet').style.display=showDiskFields?'':'none';
+  document.getElementById('est-grpDiskMult').style.display=showDiskFields?'':'none';
+  estCalculate();
+}
+
+// ─── Estimator live validation ───────────────────────────────────────────────
+
+let estToastTimer=null;
+function estToast(msg){
+  const t=document.getElementById('est-errorToast');
+  document.getElementById('est-errorMsg').textContent=msg;
+  t.classList.remove('hidden');
+  if(estToastTimer)clearTimeout(estToastTimer);
+  estToastTimer=setTimeout(()=>t.classList.add('hidden'),5000);
+}
+
+function estSetValid(el){el.classList.remove('est-invalid');el.classList.add('est-valid')}
+function estSetInvalid(el){el.classList.remove('est-valid');el.classList.add('est-invalid')}
+function estSetNeutral(el){el.classList.remove('est-valid','est-invalid')}
+
+function estValidateJson(){
+  const ta=document.getElementById('est-jsonInput');
+  const val=ta.value.trim();
+  if(!val){estSetNeutral(ta);return}
+  try{
+    const parsed=JSON.parse(val);
+    if(parsed===null||typeof parsed!=='object'||Array.isArray(parsed)){
+      estSetInvalid(ta);estToast('JSON must be a single object { }, not an array or primitive.');return;
+    }
+    estSetValid(ta);
+  }catch(e){
+    estSetInvalid(ta);estToast('Invalid JSON: '+e.message);
+  }
+}
+
+function estValidateIndex(){
+  const ta=document.getElementById('est-indexInput');
+  const val=ta.value.trim();
+  if(!val){estSetNeutral(ta);return}
+  const s=val.replace(/\s+/g,' ');
+  const errors=[];
+
+  // Must start with CREATE INDEX (allow IF NOT EXISTS)
+  if(!/^CREATE\s+INDEX\b/i.test(s)){errors.push('Must start with CREATE INDEX.')}
+
+  // Must have an index name after CREATE INDEX (allow IF NOT EXISTS before or after name)
+  const nameOk=/CREATE\s+INDEX\s+(IF\s+NOT\s+EXISTS\s+)?(`[^`]+`|[A-Za-z#][A-Za-z0-9#_]*)/i.test(s);
+  if(!nameOk&&!errors.length){errors.push('Missing or invalid index name. Names must start with a letter and can contain A-Z, a-z, 0-9, #, _.')}
+
+  // Must have ON keyspace
+  if(!/\bON\s+(`[^`]+`|[A-Za-z][A-Za-z0-9_\-]*)/i.test(s)){errors.push('Missing ON <keyspace> clause.')}
+
+  // Must have parenthesized index keys after ON keyspace
+  const onMatch=s.match(/\bON\s+(`[^`]+`(?:\s*\.\s*`[^`]+`)*|[A-Za-z][A-Za-z0-9_.\-`]*)\s*\(/i);
+  if(!onMatch){errors.push('Missing index keys. Expected ON keyspace(key1, key2, ...).')}
+  else{
+    // Check balanced parentheses for the key list
+    const afterOn=s.substring(s.indexOf(onMatch[0])+onMatch[0].length-1);
+    let depth=0,closed=false;
+    for(let i=0;i<afterOn.length;i++){
+      if(afterOn[i]==='(')depth++;
+      else if(afterOn[i]===')'){depth--;if(depth===0){closed=true;break}}
+    }
+    if(!closed){errors.push('Unbalanced parentheses in index keys.')}
+    else{
+      // Extract inner key expressions and check for empty
+      const parenStart=afterOn.indexOf('(');
+      let end=-1;depth=0;
+      for(let i=parenStart;i<afterOn.length;i++){
+        if(afterOn[i]==='(')depth++;else if(afterOn[i]===')'){depth--;if(depth===0){end=i;break}}
+      }
+      if(end>parenStart){
+        const inner=afterOn.substring(parenStart+1,end).trim();
+        if(!inner){errors.push('Index keys cannot be empty. Specify at least one field.')}
+      }
+    }
+  }
+
+  // Validate ARRAY expressions have matching END
+  const arrayCount=(s.match(/\bARRAY\b/gi)||[]).length;
+  const endCount=(s.match(/\bEND\b/gi)||[]).length;
+  if(arrayCount>endCount){errors.push('ARRAY expression missing END keyword.')}
+
+  // Validate DISTINCT/ALL ARRAY ... FOR ... IN/WITHIN ... END structure
+  const arrExprs=[...s.matchAll(/\b(DISTINCT|ALL)\s+ARRAY\b/gi)];
+  arrExprs.forEach(m=>{
+    const after=s.substring(m.index);
+    if(!/\bFOR\s+\w+\s+(IN|WITHIN)\b/i.test(after)){errors.push('ARRAY expression missing FOR <var> IN/WITHIN <field> clause.')}
+    if(!/\bEND\b/i.test(after)){errors.push('ARRAY expression missing END keyword.')}
+  });
+
+  // WHERE clause: if present, must have content after it (not just end of string or WITH)
+  const whereMatch=s.match(/\bWHERE\s*(.*?)(\s+WITH\s+|\s+USING\s+|$)/i);
+  if(whereMatch&&!whereMatch[1].trim()){errors.push('WHERE clause is empty. Add a predicate or remove the WHERE keyword.')}
+
+  // WITH clause: if present, must be valid JSON object
+  const withMatch=s.match(/\bWITH\s+(\{.*\})\s*;?\s*$/i);
+  if(withMatch){
+    try{JSON.parse(withMatch[1])}catch(e){errors.push('WITH clause has invalid JSON: '+e.message)}
+  }
+
+  // USING clause: only GSI or FTS allowed
+  const usingMatch=s.match(/\bUSING\s+(\w+)/i);
+  if(usingMatch&&!['gsi','fts'].includes(usingMatch[1].toLowerCase())){
+    errors.push('USING clause must be GSI or FTS, got: '+usingMatch[1]);
+  }
+
+  if(errors.length){
+    estSetInvalid(ta);estToast(errors[0]);
+  }else{
+    estSetValid(ta);
+  }
+}
+
+// Init estimator when tab is first shown
+let estInitialized=false;
+function estInit(){if(estInitialized)return;estInitialized=true;estSetupNumDocsInput();estSetupDocIdInput();estOnEngineChange();estValidateJson();estValidateIndex()}
 </script>
 
 <!-- Dev Debug Panel (only visible with ?dev=true) -->

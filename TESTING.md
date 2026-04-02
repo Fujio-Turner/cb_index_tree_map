@@ -13,6 +13,7 @@ npm test
 tests/
 ├── pure.test.js        # 97 tests — pure/logic functions (no DOM or browser needed)
 ├── rebalance.test.js   # 53 tests — rebalance/placement optimizer strategies & constraints
+├── estimator.test.js   # 88 tests — New Index Estimator (CollatJSON encoding, parsing, sizing)
 └── server.test.js      # 12 tests — HTTP server API & static file serving
 
 lib/
@@ -68,6 +69,23 @@ Unit and regression tests for the Index Placement Optimizer strategies and const
 | **`computeRebalancePlan` — LPT disk balance** | LPT strategy produces better disk balance than others for skewed sizes |
 | **`computeRebalancePlan` — importance spread** | Hot indexes are spread across nodes instead of concentrated |
 | **`computeRebalancePlan` — edge cases** | Returns null for <2 nodes, handles 0-size indexes, minimal clusters |
+
+### `tests/estimator.test.js` — New Index Estimator Tests
+
+Unit and regression tests for the New Index Estimator feature (Tab 5), covering CollatJSON encoding, index statement parsing, field resolution, and end-to-end sizing calculations.
+
+| Group | What It Checks |
+|---|---|
+| **`estFormatBytes`** | Human-readable byte formatting (0 B, KB, MB, GB, TB, fractional values) |
+| **`estCollatJsonSize`** | CollatJSON binary encoding sizes for all types (null, boolean, number, string, array, object) |
+| **`estCollatJsonNumberSize`** | Number-specific encoding: zero, single digit, multi-digit, negative numbers |
+| **`estCollatJsonStringSize`** | String encoding: empty, ASCII, longer strings, unicode/multi-byte characters |
+| **`estRawSize`** | Unencoded byte sizes for null, boolean, number, string, objects |
+| **`estTokenizePath`** | SQL++ field path tokenization: dots, backtick-quoted identifiers, array subscripts, special chars |
+| **`estResolveField`** | Resolving field paths on JSON documents: top-level, nested, arrays, backtick paths, missing fields |
+| **`estParseIndex`** | CREATE INDEX parser: single/multi-field, WHERE clause, WITH, DISTINCT/ALL arrays, ARRAY…FOR…END, FLATTEN_KEYS, meta().id, backtick names, nested paths, edge cases |
+| **Regression — end-to-end sizing** | Full pipeline: field resolution → CollatJSON encoding → forward/back entry sizes → Plasma/MOI/ForestDB totals → selectivity/array expansion |
+| **Regression — edge cases** | Nested arrays of objects, deeply nested objects, rawSize/collatSize consistency, backtick paths with dots, extra whitespace, WITHIN keyword |
 
 ### `tests/server.test.js` — Server API Tests
 
