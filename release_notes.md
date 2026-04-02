@@ -1,5 +1,17 @@
 # Release Notes
 
+## v2.4.0 (2026-04-02)
+
+### New Features
+
+- *(Add release notes here)*
+
+### Stats
+
+- Updated version badge to v2.4.0.
+
+---
+
 ## v2.3.3 (2026-04-02)
 
 ### Bug Fixes

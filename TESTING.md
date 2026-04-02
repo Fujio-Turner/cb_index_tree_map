@@ -11,11 +11,12 @@ npm test
 
 ```
 tests/
-├── pure.test.js    # 97 tests — pure/logic functions (no DOM or browser needed)
-└── server.test.js  # 12 tests — HTTP server API & static file serving
+├── pure.test.js        # 97 tests — pure/logic functions (no DOM or browser needed)
+├── rebalance.test.js   # 53 tests — rebalance/placement optimizer strategies & constraints
+└── server.test.js      # 12 tests — HTTP server API & static file serving
 
 lib/
-└── pure.js         # Extracted pure functions from index.html & server.js (shared by tests)
+└── pure.js             # Extracted pure functions from index.html & server.js (shared by tests)
 ```
 
 ## Test Suites
@@ -47,6 +48,26 @@ Unit tests for all logic functions extracted into `lib/pure.js`. These mirror th
 | **`parseSystemJSON`** | Parses `SELECT *, meta() FROM system:indexes` output — standard arrays, `{results:[]}` wrappers, FTS suffix, error handling |
 | **`parseStatsNodeJSON`** | Parses GSI stats API JSON — 2-part keys (`bucket:index`), 4-part keys (`bucket:scope:coll:index`), indexer extraction, bloat ratio calculation |
 | **`buildTree`** | Builds nested `bucket → scope → collection → index` tree for treemap charts, with `useVal` toggle |
+
+### `tests/rebalance.test.js` — Rebalance / Placement Optimizer Tests
+
+Unit and regression tests for the Index Placement Optimizer strategies and constraints, extracted into `lib/pure.js`.
+
+| Group | What It Checks |
+|---|---|
+| **`isReplicaBlocked`** | Hard constraint: replicas of the same index never on the same node |
+| **`isRackBlocked`** | Hard constraint: replicas never in the same server group/rack (skipped when no groups configured) |
+| **`ksConcentrationPenalty`** | Soft constraint: adaptive quadratic penalty for keyspace over-concentration on a node or group |
+| **`stickyBonus`** | Soft constraint: placement bonus for keeping indexes on their current node (minimize moves) |
+| **`buildReplicaGroups`** | Groups primary + replica indexes by base name, stripping `(replica N)` suffixes |
+| **`computeRebalancePlan` — all strategies** | Basic operation for greedy, lpt, inverse-freq, stratified, importance, reservoir — valid plan shape, all indexes accounted for |
+| **`computeRebalancePlan` — replica separation** | No two replicas share a node in proposed plan (all strategies) |
+| **`computeRebalancePlan` — rack/zone** | Replicas placed in different racks when groups are configured |
+| **`computeRebalancePlan` — keyspace spread** | Dominant bucket's indexes are spread across nodes, not concentrated |
+| **`computeRebalancePlan` — minimize moves** | With move cap enabled, fewer indexes are moved; moves stay within threshold |
+| **`computeRebalancePlan` — LPT disk balance** | LPT strategy produces better disk balance than others for skewed sizes |
+| **`computeRebalancePlan` — importance spread** | Hot indexes are spread across nodes instead of concentrated |
+| **`computeRebalancePlan` — edge cases** | Returns null for <2 nodes, handles 0-size indexes, minimal clusters |
 
 ### `tests/server.test.js` — Server API Tests
 
