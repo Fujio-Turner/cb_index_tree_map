@@ -1,5 +1,29 @@
 # Release Notes
 
+## v2.3.2 (2026-04-01)
+
+### New Features
+
+- **📅 Days-Since-Last-Scan Filter** — The scan history filter dropdown now includes 6 day-range buckets (`1-7 days`, `8-30 days`, `31-90 days`, `91d-6mo`, `6mo-1y`, `1y+`) with per-range index counts, making it easy to find indexes that haven't been scanned in a specific time window. (#47)
+
+- **📝 Index Definition in Stats Detail Modal** — The Index Stats Detail Modal now shows the full `CREATE INDEX` statement (with a Copy button) when system indexes data is loaded, so you can see the index definition alongside its runtime stats. (#49)
+
+- **⏱️ Relative Time-Ago for Last Scan** — The "Last Scan Time" row in the Stats Detail Modal now shows a relative time badge (e.g., `3d ago`, `2mo ago`) next to the ISO timestamp for quick at-a-glance recency. (#49)
+
+- **🧪 Test Suite** — Added a comprehensive test suite with 97 pure function unit tests (`tests/pure.test.js`) and 12 server API integration tests (`tests/server.test.js`). Pure functions are extracted into `lib/pure.js` for testability. Run with `npm test`. (#48)
+
+### UX Improvements
+
+- Scan filter dropdown widened to accommodate day-range labels.
+- Updated version badge to v2.3.2.
+
+### Stats
+
+- **Files changed:** 8 (`index.html`, `lib/pure.js`, `tests/pure.test.js`, `tests/server.test.js`, `package.json`, `package-lock.json`, `.gitignore`, `TESTING.md`)
+- **Lines:** +4,651 / −5
+
+---
+
 ## v2.3.1 (2026-03-20)
 
 ### New Features

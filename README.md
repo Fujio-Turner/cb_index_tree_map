@@ -215,7 +215,7 @@ docker compose up --build    # rebuild after updating index.html
 
 ## 📦 Current Release
 
-**v2.3.1** — See [release notes](release_notes.md) for details.
+**v2.3.2** — See [release notes](release_notes.md) for details.
 
 ---
 
