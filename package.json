@@ -1,0 +1,12 @@
+{
+  "name": "cb_index_tree_map",
+  "version": "2.3.2",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "test": "jest --verbose"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  }
+}
