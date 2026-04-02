@@ -229,7 +229,7 @@ function showInsightModal(key,limit){
   document.getElementById('insight-modal-desc').textContent=d.desc;
   const items=d.items.slice(0,max);
   let h=`<table class="table table-xs table-zebra w-full"><thead><tr class="bg-base-200"><th class="w-10">#</th><th>Index</th><th>Node</th><th>Bucket</th><th>Scope</th><th class="text-right">${d.colLabel}</th></tr></thead><tbody>`;
-  items.forEach((x,i)=>{h+=`<tr><td class="font-mono text-xs font-bold">${i+1}</td><td class="font-semibold">${x.name}${x._replicaTotal>1?replicaBadge(x):''}</td><td class="text-xs">${nodeBadge(x._nodeName)}</td><td>${x.bucket}</td><td>${x.scope}</td><td class="font-mono text-xs text-right">${d.fmtVal(x)}</td></tr>`});
+  const hideReplica=document.getElementById('f-unique').checked;items.forEach((x,i)=>{h+=`<tr><td class="font-mono text-xs font-bold">${i+1}</td><td class="font-semibold">${x.name}${primaryBadge(x)}${!hideReplica&&x._replicaTotal>1?replicaBadge(x):''}</td><td class="text-xs">${nodeBadge(x._nodeName)}</td><td>${x.bucket}</td><td>${x.scope}</td><td class="font-mono text-xs text-right">${d.fmtVal(x)}</td></tr>`});
   h+='</tbody></table>';
   if(d.items.length>max)h+=`<p class="text-xs text-base-content/40 mt-2 text-center">Showing top ${max} of ${d.items.length}</p>`;
   document.getElementById('insight-modal-body').innerHTML=h;
@@ -301,7 +301,7 @@ function wildcardMatch(pattern,str){const re=new RegExp('^'+pattern.replace(/[-\
 function getItemFields(item){if(item.keys&&item.keys.length)return getIndexFields(item.keys);const key=item.bucket+':'+item.scope+':'+item.collection+':'+item.name;const sys=globalSystemFlat.find(s=>s.fullKey===key||s.bucket+':'+s.scope+':'+s.collection+':'+s.name===key);if(sys&&sys.keys)return getIndexFields(sys.keys);return[]}
 function matchFieldsFilter(item,fieldPatterns){const fields=getItemFields(item);if(!fields.length)return false;return fieldPatterns.every(p=>fields.some(f=>wildcardMatch(p,f)))}
 const SCAN_DAY_RANGES=[{value:'days-1-7',label:'1-7 days',min:1,max:7},{value:'days-8-30',label:'8-30 days',min:8,max:30},{value:'days-31-90',label:'31-90 days',min:31,max:90},{value:'days-91-182',label:'91d-6mo',min:91,max:182},{value:'days-183-365',label:'6mo-1y',min:183,max:365},{value:'days-366-inf',label:'1y+',min:366,max:Infinity}];
-function matchFilter(item,f){if(f.scan){const scanTime=getScanTime(item);const neverScanned=!scanTime||scanTime===0;if(f.scan==='exclude-never'&&neverScanned)return false;if(f.scan==='only-never'&&!neverScanned)return false;const dr=SCAN_DAY_RANGES.find(r=>r.value===f.scan);if(dr){if(neverScanned)return false;const days=Math.floor((Date.now()-new Date(scanTime/1e6).getTime())/86400000);if(days<dr.min||days>dr.max)return false}}if(f.fields){const patterns=f.fields.split(',').map(s=>s.trim()).filter(Boolean);if(patterns.length&&!matchFieldsFilter(item,patterns))return false}return(!f.bucket||item.bucket===f.bucket)&&(!f.scope||item.scope===f.scope)&&(!f.collection||item.collection===f.collection)&&(!f.index||item.name===f.index)}
+function matchFilter(item,f){if(f.scan){const scanTime=getScanTime(item);const neverScanned=!scanTime||scanTime===0;if(f.scan==='exclude-never'&&neverScanned)return false;if(f.scan==='only-never'&&!neverScanned)return false;const dr=SCAN_DAY_RANGES.find(r=>r.value===f.scan);if(dr){if(neverScanned)return false;const days=Math.floor((Date.now()-new Date(scanTime/1e6).getTime())/86400000);if(days<dr.min||days>dr.max)return false}}if(f.fields){const patterns=f.fields.split(',').map(s=>s.trim()).filter(Boolean);if(patterns.length&&!matchFieldsFilter(item,patterns))return false}return(!f.bucket||item.bucket===f.bucket)&&(!f.scope||item.scope===f.scope)&&(!f.collection||item.collection===f.collection)&&(!f.index||stripReplicaSuffix(item.name)===f.index)}
 
 // ===== FIELD AUTOCOMPLETE (uFuzzy) =====
 let fieldACIndex=-1;
@@ -371,7 +371,8 @@ function onFieldsKeydown(e){
 }
 function updateACHighlight(rows){rows.forEach((r,i)=>{r.classList.toggle('bg-primary/20',i===fieldACIndex);if(i===fieldACIndex)r.scrollIntoView({block:'nearest'})})}
 
-function dedup(arr){const seen=new Set();return arr.filter(x=>{const k=x.bucket+':'+x.scope+':'+x.collection+':'+x.name;if(seen.has(k))return false;seen.add(k);return true})}
+function stripReplicaSuffix(name){return name.replace(/\s*\(replica\s*\d+\)$/i,'')}
+function dedup(arr){const seen=new Set();return arr.filter(x=>{const k=x.bucket+':'+x.scope+':'+x.collection+':'+stripReplicaSuffix(x.name);if(seen.has(k))return false;seen.add(k);return true})}
 function matchNodeFilter(nodeName,f){return!f.nodes.length||f.nodes.includes(nodeName)}
 function getFilteredStats(){const f=getFilters();return globalStatsFlat.filter(n=>matchNodeFilter(n.nodeName,f)).map(n=>({...n,flat:n.flat.filter(x=>matchFilter(x,f))})).filter(n=>n.flat.length>0)}
 function populateFilters(){const all=[...globalSystemFlat,...globalStatsFlat.flatMap(n=>n.flat)];if(!all.length){document.getElementById('filter-bar').classList.add('hidden');return}document.getElementById('filter-bar').classList.remove('hidden');populateNodeFilter();cascadeFilters();rebuildFieldHaystack()}
@@ -390,7 +391,8 @@ function onNodeCheckChange(){const cbs=[...document.querySelectorAll('#f-node-li
 function updateNodeLabel(){const cbs=[...document.querySelectorAll('#f-node-list input[type=checkbox]:not(#f-node-all)')];const checked=cbs.filter(c=>c.checked);const label=document.getElementById('f-node-label');if(!cbs.length||checked.length===cbs.length)label.textContent='All Nodes';else if(checked.length===0)label.textContent='No Nodes';else if(checked.length===1)label.textContent=checked[0].value;else label.textContent=checked.length+' Nodes'}
 function cascadeFilters(){
   const selectedNodes=getSelectedNodes();
-  const all=[...globalSystemFlat,...globalStatsFlat.filter(n=>!selectedNodes.length||selectedNodes.includes(n.nodeName)).flatMap(n=>n.flat)];
+  let all=[...globalSystemFlat,...globalStatsFlat.filter(n=>!selectedNodes.length||selectedNodes.includes(n.nodeName)).flatMap(n=>n.flat)];
+  if(document.getElementById('f-unique').checked)all=dedup(all);
   const fb=document.getElementById('f-bucket'),fs=document.getElementById('f-scope'),fc=document.getElementById('f-collection'),fi=document.getElementById('f-index');
   const curB=fb.value,curS=fs.value,curC=fc.value,curI=fi.value;
   // Buckets: always show all, with index count per bucket
@@ -411,9 +413,10 @@ function cascadeFilters(){
   fc.innerHTML=`<option value="">All Collections (${collections.length})</option>`+collections.map(v=>`<option value="${v}"${v===validC?' selected':''}>${v} (${collCounts[v]})</option>`).join('');
   // Indexes: filtered by bucket + scope + collection
   const idxPool=validC?collPool.filter(i=>i.collection===validC):collPool;
-  const indexes=[...new Set(idxPool.map(i=>i.name))].sort();
+  const indexes=[...new Set(idxPool.map(i=>stripReplicaSuffix(i.name)))].sort();
+  const primaryNames=new Set(idxPool.filter(i=>isPrimaryIndex(i)).map(i=>stripReplicaSuffix(i.name)));
   const validI=indexes.includes(curI)?curI:'';
-  fi.innerHTML=`<option value="">All Indexes (${indexes.length})</option>`+indexes.map(v=>`<option${v===validI?' selected':''}>${v}</option>`).join('');
+  fi.innerHTML=`<option value="">All Indexes (${indexes.length})</option>`+indexes.map(v=>`<option${v===validI?' selected':''}>${v}${primaryNames.has(v)?' [P]':''}</option>`).join('');
   // Scan filter: update counts
   const fScan=document.getElementById('f-scan'),curScan=fScan.value;
   const scanPool=idxPool;
@@ -454,13 +457,15 @@ function buildReplicaMap(){
   buildNodeColors();
   globalStatsFlat.forEach(node=>{
     node.flat.forEach(idx=>{
-      if(!globalReplicaMap[idx.fullKey])globalReplicaMap[idx.fullKey]=[];
-      globalReplicaMap[idx.fullKey].push(node.nodeName);
+      const key=idx.bucket+':'+idx.scope+':'+idx.collection+':'+stripReplicaSuffix(idx.name);
+      if(!globalReplicaMap[key])globalReplicaMap[key]=[];
+      if(!globalReplicaMap[key].includes(node.nodeName))globalReplicaMap[key].push(node.nodeName);
     });
   });
   globalStatsFlat.forEach(node=>{
     node.flat.forEach(idx=>{
-      const nodes=globalReplicaMap[idx.fullKey]||[];
+      const key=idx.bucket+':'+idx.scope+':'+idx.collection+':'+stripReplicaSuffix(idx.name);
+      const nodes=globalReplicaMap[key]||[];
       idx._replicaTotal=nodes.length;
       idx._replicaIndex=nodes.indexOf(node.nodeName)+1;
       idx._replicaNodes=nodes;
@@ -468,6 +473,8 @@ function buildReplicaMap(){
     });
   });
 }
+function isPrimaryIndex(idx){return idx.isPrimary||/^#primary$/i.test(stripReplicaSuffix(idx.name))}
+function primaryBadge(idx){return isPrimaryIndex(idx)?' <span class="badge badge-outline badge-xs text-[9px] font-bold" style="color:#8b5cf6;border-color:#8b5cf6">P</span>':''}
 function replicaBadgeOne(ri,total,tipText){
   const bg=replicaColor(ri);
   return`<span class="tooltip tooltip-bottom" data-tip="${tipText}"><span class="badge badge-xs cursor-help text-white font-bold" style="background:${bg};border-color:${bg}">${ri}/${total}</span></span>`;
@@ -539,7 +546,7 @@ let h=`<div class="stats-table-wrap"><table class="table table-xs table-pin-rows
 </tr></thead><tbody>`;
 fl.forEach(f=>{const bw=Math.max(2,Math.round((f.disk_size||0)/mx*50));const fp=`${f.bucket}:${f.scope}:${f.collection}:${f.name}`;
 h+=`<tr data-key="${fp}" class="hover:bg-warning/10 cursor-pointer" onclick="onRowClick(this,'${nIdx}')">
-<td class="font-semibold max-w-[200px] truncate" title="${f.fullKey}" data-sort="${f.name}">${f.name}</td>
+<td class="font-semibold max-w-[200px] truncate" title="${f.fullKey}" data-sort="${f.name}">${f.name}${primaryBadge(f)}</td>
 <td class="text-center" data-sort="${f._replicaTotal||0}">${f._replicaTotal>1?replicaBadge(f):'<span class="badge badge-ghost badge-xs">—</span>'}</td>
 <td data-sort="${f.bucket}">${f.bucket}</td><td data-sort="${f.scope}">${f.scope}</td><td data-sort="${f.collection}">${f.collection}</td>
 <td class="font-mono text-xs text-right" data-sort="${f.disk_size||0}"><span class="inline-block h-2 rounded bg-info align-middle mr-1" style="width:${bw}px"></span>${fmt(f.disk_size)}</td>
@@ -617,7 +624,7 @@ function makeSystemTable(filtered){
     const createStmt=buildCreateIndex(f);
     const escaped=createStmt.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
     h+=`<tr class="hover:bg-warning/10">
-<td class="font-semibold max-w-[200px] truncate" title="${f.fullKey}" data-sort="${f.name}">${f.name}</td>
+<td class="font-semibold max-w-[200px] truncate" title="${f.fullKey}" data-sort="${f.name}">${f.name}${primaryBadge(f)}</td>
 <td data-sort="${f.bucket}">${f.bucket}</td>
 <td data-sort="${f.scope}">${f.scope}</td>
 <td data-sort="${f.collection}">${f.collection}</td>
@@ -1005,7 +1012,7 @@ if(statsF.length){
     storeMetricChartData(m.key,allSorted,m.label,m.fmt,x=>x[m.key]||0);
     html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center justify-between mb-2"><div class="flex items-center gap-2"><h3 class="font-bold text-sm">${m.label}</h3>${nodeCountBadges(sorted)}</div><div class="flex items-center gap-1"><div class="join"><button class="btn btn-xs join-item btn-active" id="mtbl-${m.key}-btn" onclick="switchMetricView('${m.key}','table')">Table</button><button class="btn btn-xs join-item" id="mbar-${m.key}-btn" onclick="switchMetricView('${m.key}','chart')">Bar</button></div><button class="btn btn-ghost btn-xs" onclick="expandMetricChart('${chartId}','${m.label}')" title="Expand chart">⛶</button></div></div>`;
     html+=`<div id="mtbl-wrap-${m.key}"><table class="table table-xs"><thead><tr class="bg-base-200"><th>#</th><th>Index</th><th>Node</th><th>Bucket</th><th class="text-right">${m.label.split(' ').slice(1).join(' ')}</th></tr></thead><tbody>`;
-    sorted.forEach((item,i)=>{html+=`<tr><td><span class="font-mono text-xs font-bold">${i+1}</span></td><td class="font-semibold">${item.name}${item._replicaTotal>1?replicaBadge(item):''}</td><td class="text-xs">${nodeBadge(item._nodeName)}</td><td>${item.bucket}</td><td class="font-mono text-xs text-right">${m.fmt(item[m.key])}</td></tr>`});
+    sorted.forEach((item,i)=>{html+=`<tr><td><span class="font-mono text-xs font-bold">${i+1}</span></td><td class="font-semibold">${item.name}${primaryBadge(item)}${!f.uniqueOnly&&item._replicaTotal>1?replicaBadge(item):''}</td><td class="text-xs">${nodeBadge(item._nodeName)}</td><td>${item.bucket}</td><td class="font-mono text-xs text-right">${m.fmt(item[m.key])}</td></tr>`});
     html+=`</tbody></table>`;
     if(allSorted.length>10)html+=`<div class="flex gap-2 justify-center mt-2"><button class="btn btn-ghost btn-xs text-[10px]" onclick="showInsightModal('${iKey}',25)">Show more (25) →</button><button class="btn btn-ghost btn-xs text-[10px]" onclick="showInsightModal('${iKey}',100)">Show more (100) →</button>${allSorted.length>100?`<button class="btn btn-ghost btn-xs text-[10px]" onclick="showInsightModal('${iKey}',${allSorted.length})">Show all (${allSorted.length}) →</button>`:''}</div>`;
     html+=`</div><div id="${chartId}" class="abox" style="display:none"></div>`;
@@ -1018,7 +1025,7 @@ if(statsF.length){
     never.sort((a,b)=>(b.disk_size||0)-(a.disk_size||0));
     storeMetricChartData('never_scanned',never,'Never Scanned Indexes (Disk Size)',fmt,x=>x.disk_size||0);
     html+=`<div class="card bg-base-100 shadow-sm"><div class="card-body p-3"><div class="flex items-center justify-between mb-2"><div class="flex items-center gap-2"><h3 class="font-bold text-sm">Never Scanned Indexes (${never.length})</h3>${nodeCountBadges(never)}</div><div class="flex items-center gap-1"><div class="join"><button class="btn btn-xs join-item btn-active" id="mtbl-never_scanned-btn" onclick="switchMetricView('never_scanned','table')">Table</button><button class="btn btn-xs join-item" id="mbar-never_scanned-btn" onclick="switchMetricView('never_scanned','chart')">Bar</button><button class="btn btn-xs join-item" id="mpie-never_scanned-btn" onclick="switchMetricView('never_scanned','pie')">Pie</button></div><button class="btn btn-ghost btn-xs" onclick="expandMetricChart('mchart-never_scanned','Never Scanned Indexes')" title="Expand chart">⛶</button></div></div><div id="mtbl-wrap-never_scanned"><p class="text-xs text-base-content/50 mb-2">These indexes consume disk but have never been queried. Consider dropping them.</p><div class="overflow-y-auto max-h-[400px]"><table class="table table-xs table-pin-rows"><thead><tr class="bg-base-200"><th>Index</th><th>Node</th><th>Bucket</th><th>Scope</th><th class="text-right">Disk</th></tr></thead><tbody>`;
-    never.forEach(x=>{html+=`<tr><td class="font-semibold">${x.name}${x._replicaTotal>1?replicaBadge(x):''}</td><td class="text-xs">${nodeBadge(x._nodeName)}</td><td>${x.bucket}</td><td>${x.scope}</td><td class="font-mono text-xs text-right">${fmt(x.disk_size)}</td></tr>`});
+    never.forEach(x=>{html+=`<tr><td class="font-semibold">${x.name}${primaryBadge(x)}${!f.uniqueOnly&&x._replicaTotal>1?replicaBadge(x):''}</td><td class="text-xs">${nodeBadge(x._nodeName)}</td><td>${x.bucket}</td><td>${x.scope}</td><td class="font-mono text-xs text-right">${fmt(x.disk_size)}</td></tr>`});
     html+=`</tbody></table></div></div><div id="mchart-never_scanned" class="abox" style="display:none"></div></div></div>`;
   }
 }
@@ -2750,6 +2757,66 @@ function showIndexStats(fullKey,nIdx){
       }
     }
   },50);
+}
+</script>
+
+<!-- Dev Debug Panel (only visible with ?dev=true) -->
+<div id="dev-debug" style="display:none">
+  <div onclick="document.getElementById('dev-debug-body').classList.toggle('hidden')" style="position:fixed;bottom:0;left:0;right:0;background:#111;color:#888;font-size:11px;padding:4px 12px;cursor:pointer;z-index:9999;display:flex;justify-content:space-between;align-items:center">
+    <span>🛠 Dev Debug <span id="dev-debug-arrow">▲</span></span>
+    <button onclick="event.stopPropagation();copyDevDebug()" style="background:#333;color:#0f0;border:1px solid #555;border-radius:4px;padding:2px 10px;font-size:11px;cursor:pointer" id="dev-debug-copy-btn">Copy All</button>
+  </div>
+  <div id="dev-debug-body" class="hidden" style="position:fixed;bottom:28px;left:0;right:0;max-height:40vh;overflow:auto;background:#1a1a1a;color:#0f0;font-family:monospace;font-size:11px;padding:12px;z-index:9998;border-top:1px solid #333">
+    <pre id="dev-debug-content" style="white-space:pre-wrap;word-break:break-all"></pre>
+  </div>
+</div>
+<script>
+(function(){
+  if(new URLSearchParams(window.location.search).get('dev')!=='true')return;
+  document.getElementById('dev-debug').style.display='block';
+  const body=document.getElementById('dev-debug-body');
+  const arrow=document.getElementById('dev-debug-arrow');
+  new MutationObserver(()=>{
+    const hidden=body.classList.contains('hidden');
+    arrow.textContent=hidden?'▲':'▼';
+    if(!hidden)refreshDevDebug();
+  }).observe(body,{attributes:true,attributeFilter:['class']});
+})();
+function refreshDevDebug(){
+  const f=getFilters();
+  const sysF=globalSystemFlat.filter(i=>matchFilter(i,f));
+  const statsF=globalStatsFlat.filter(n=>matchNodeFilter(n.nodeName,f)).flatMap(n=>n.flat).filter(i=>matchFilter(i,f));
+  const dedupSys=dedup([...sysF]);
+  const dedupStats=dedup([...statsF]);
+  const sample=statsF.slice(0,3).map(x=>({name:x.name,bucket:x.bucket,scope:x.scope,collection:x.collection,_nodeName:x._nodeName,_replicaIndex:x._replicaIndex,_replicaTotal:x._replicaTotal}));
+  const info={
+    timestamp:new Date().toISOString(),
+    url:window.location.href,
+    filters:f,
+    globalSystemFlat_count:globalSystemFlat.length,
+    globalStatsFlat_count:globalStatsFlat.length,
+    globalStatsFlat_nodes:globalStatsFlat.map(n=>({nodeName:n.nodeName,indexCount:n.flat.length})),
+    filtered_system_count:sysF.length,
+    filtered_stats_count:statsF.length,
+    dedup_system_count:dedupSys.length,
+    dedup_stats_count:dedupStats.length,
+    removed_by_dedup:statsF.length-dedupStats.length,
+    globalReplicaMap_keys:Object.keys(globalReplicaMap).length,
+    globalReplicaMap:globalReplicaMap,
+    sample_items:sample,
+    activeCharts_count:activeCharts.length,
+    currentMetric:currentMetric
+  };
+  document.getElementById('dev-debug-content').textContent=JSON.stringify(info,null,2);
+}
+function copyDevDebug(){
+  refreshDevDebug();
+  const text=document.getElementById('dev-debug-content').textContent;
+  navigator.clipboard.writeText(text).then(()=>{
+    const btn=document.getElementById('dev-debug-copy-btn');
+    btn.textContent='Copied!';btn.style.color='#fff';
+    setTimeout(()=>{btn.textContent='Copy All';btn.style.color='#0f0'},1500);
+  });
 }
 </script>
 
