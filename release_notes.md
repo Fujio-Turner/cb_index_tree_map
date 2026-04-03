@@ -1,5 +1,28 @@
 # Release Notes
 
+## v2.5.1 (2026-04-02)
+
+### New Features
+
+- **📋 INFER Schema Support in Index Estimator** — The New Index Estimator now accepts the output of `INFER `bucket`` in addition to a plain JSON document. When INFER output is detected, a flavor picker appears so you can select which document type/flavor to estimate against. Each INFER schema is automatically converted into a representative sample document using sample values and property types.
+
+- **📑 Meta() Input Tab in Index Estimator** — Added a dedicated **Meta** input tab alongside the Sample JSON / INFER tab. Paste document metadata (from SDK or REST API) to support indexes on `meta().expiration`, `meta().cas`, `meta().type`, and other meta fields. Auto-fills the Document ID field from `meta.id` when present.
+
+- **🔧 Full meta() Field Support in Index Parsing** — The index parser now handles all `meta().*` field references (e.g., `meta().expiration`, `meta().cas`, `meta().type`), not just `meta().id`. Field values are resolved from the Meta input and sized using CollatJSON encoding.
+
+### UX Improvements
+
+- **🎨 Input State Indicators** — Estimator input fields now use three color-coded states: **yellow** (needs input), **green** (user-provided), and **blue** (auto-filled). Provides clear visual feedback on which fields have been manually set vs auto-populated.
+
+- **Estimator field table meta() row highlighting** — Meta fields in the estimator results table now display with a distinct accent background for easy identification.
+
+### Stats
+
+- **Files changed:** 3 (`index.html`, `lib/pure.js`, `tests/estimator.test.js`)
+- Updated version badge to v2.5.1.
+
+---
+
 ## v2.5.0 (2026-04-02)
 
 ### New Features
