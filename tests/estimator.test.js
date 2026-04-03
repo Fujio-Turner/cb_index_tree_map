@@ -2,6 +2,7 @@ const {
   estFormatBytes, estCollatJsonSize, estCollatJsonNumberSize, estCollatJsonStringSize,
   estRawSize, estTokenizePath, estResolveField, estParseIndex,
   estValidateJsonStr, estValidateIndexStr,
+  estIsInferOutput, estInferToSampleDoc, estInferSampleValue,
 } = require('../lib/pure');
 
 // ────────────────────────────────────────────
@@ -217,6 +218,32 @@ describe('estParseIndex', () => {
     expect(r.resolvedFields[0].isMeta).toBe(true);
     expect(r.resolvedFields[0].field).toBe('meta().id');
     expect(r.resolvedFields[1].isMeta).toBe(false);
+  });
+
+  test('meta().expiration expression', () => {
+    const r = estParseIndex('CREATE INDEX idx_exp ON `bucket`(meta().expiration)');
+    expect(r.resolvedFields).toHaveLength(1);
+    expect(r.resolvedFields[0].isMeta).toBe(true);
+    expect(r.resolvedFields[0].field).toBe('meta().expiration');
+  });
+
+  test('meta().cas expression', () => {
+    const r = estParseIndex('CREATE INDEX idx_cas ON `bucket`(meta().cas, type)');
+    expect(r.resolvedFields).toHaveLength(2);
+    expect(r.resolvedFields[0].isMeta).toBe(true);
+    expect(r.resolvedFields[0].field).toBe('meta().cas');
+  });
+
+  test('meta().type expression', () => {
+    const r = estParseIndex('CREATE INDEX idx_mtype ON `bucket`(meta().type)');
+    expect(r.resolvedFields[0].isMeta).toBe(true);
+    expect(r.resolvedFields[0].field).toBe('meta().type');
+  });
+
+  test('meta().flags expression', () => {
+    const r = estParseIndex('CREATE INDEX idx_flags ON `bucket`(meta().flags, name)');
+    expect(r.resolvedFields[0].isMeta).toBe(true);
+    expect(r.resolvedFields[0].field).toBe('meta().flags');
   });
 
   test('backtick-quoted index and keyspace names', () => {
@@ -638,5 +665,516 @@ describe('estValidateIndexStr', () => {
     const r = estValidateIndexStr('CREATE PRIMARY INDEX ON `bucket`');
     expect(r.valid).toBe(false);
     expect(r.error).toMatch(/CREATE INDEX/i);
+  });
+});
+
+// ────────────────────────────────────────────
+// INFER schema support
+// ────────────────────────────────────────────
+describe('estIsInferOutput', () => {
+  test('regular object is not INFER', () => {
+    expect(estIsInferOutput({ name: 'test' })).toBe(false);
+  });
+  test('empty array is not INFER', () => {
+    expect(estIsInferOutput([])).toBe(false);
+  });
+  test('flat array of INFER schemas is detected', () => {
+    const infer = [{ properties: { name: { type: 'string' } }, type: 'object' }];
+    expect(estIsInferOutput(infer)).toBe(true);
+  });
+  test('nested array (actual INFER output) is detected', () => {
+    const infer = [[{ properties: { id: { type: 'number' } }, type: 'object' }]];
+    expect(estIsInferOutput(infer)).toBe(true);
+  });
+  test('array of non-schema objects is not INFER', () => {
+    expect(estIsInferOutput([{ name: 'foo' }, { name: 'bar' }])).toBe(false);
+  });
+  test('null is not INFER', () => {
+    expect(estIsInferOutput(null)).toBe(false);
+  });
+  test('string is not INFER', () => {
+    expect(estIsInferOutput('hello')).toBe(false);
+  });
+  test('number is not INFER', () => {
+    expect(estIsInferOutput(42)).toBe(false);
+  });
+  test('array with missing properties key is not INFER', () => {
+    expect(estIsInferOutput([{ type: 'object' }])).toBe(false);
+  });
+  test('array with wrong type value is not INFER', () => {
+    expect(estIsInferOutput([{ properties: { a: {} }, type: 'array' }])).toBe(false);
+  });
+  test('multi-schema INFER output is detected', () => {
+    const infer = [[
+      { properties: { name: { type: 'string' } }, type: 'object', '#docs': 100, Flavor: 'type = "airline"' },
+      { properties: { city: { type: 'string' } }, type: 'object', '#docs': 200, Flavor: 'type = "airport"' },
+    ]];
+    expect(estIsInferOutput(infer)).toBe(true);
+  });
+  test('mixed valid and invalid schemas is not INFER', () => {
+    expect(estIsInferOutput([
+      { properties: { a: {} }, type: 'object' },
+      { name: 'not a schema' },
+    ])).toBe(false);
+  });
+});
+
+describe('estInferToSampleDoc', () => {
+  test('converts simple string/number/boolean properties', () => {
+    const schema = {
+      properties: {
+        name: { type: 'string', samples: ['Alice', 'Bob'] },
+        age: { type: 'number', samples: [30, 40] },
+        active: { type: 'boolean', samples: [true, false] },
+      },
+      type: 'object',
+    };
+    const doc = estInferToSampleDoc(schema);
+    expect(doc.name).toBe('Alice');
+    expect(doc.age).toBe(30);
+    expect(doc.active).toBe(true);
+  });
+
+  test('handles nullable fields (type array with null)', () => {
+    const schema = {
+      properties: {
+        city: {
+          type: ['null', 'string'],
+          samples: [[null], ['London', 'Paris']],
+        },
+      },
+      type: 'object',
+    };
+    const doc = estInferToSampleDoc(schema);
+    expect(doc.city).toBe('London');
+  });
+
+  test('handles nested object properties', () => {
+    const schema = {
+      properties: {
+        geo: {
+          type: 'object',
+          properties: {
+            lat: { type: 'number', samples: [51.5] },
+            lon: { type: 'number', samples: [-0.12] },
+          },
+        },
+      },
+      type: 'object',
+    };
+    const doc = estInferToSampleDoc(schema);
+    expect(doc.geo).toEqual({ lat: 51.5, lon: -0.12 });
+  });
+
+  test('handles array with object items', () => {
+    const schema = {
+      properties: {
+        schedule: {
+          type: 'array',
+          items: {
+            properties: {
+              day: { type: 'number', samples: [0, 1] },
+              flight: { type: 'string', samples: ['AA001'] },
+            },
+            type: 'object',
+          },
+        },
+      },
+      type: 'object',
+    };
+    const doc = estInferToSampleDoc(schema);
+    expect(doc.schedule).toEqual([{ day: 0, flight: 'AA001' }]);
+  });
+
+  test('handles array with string items', () => {
+    const schema = {
+      properties: {
+        tags: { type: 'array', items: { type: 'string' } },
+      },
+      type: 'object',
+    };
+    const doc = estInferToSampleDoc(schema);
+    expect(doc.tags).toEqual(['sample']);
+  });
+
+  test('handles null-only type', () => {
+    const schema = {
+      properties: {
+        tollfree: { type: 'null', samples: [null] },
+      },
+      type: 'object',
+    };
+    const doc = estInferToSampleDoc(schema);
+    expect(doc.tollfree).toBeNull();
+  });
+
+  test('uses first sample from array samples for simple types', () => {
+    const schema = {
+      properties: {
+        airline: {
+          type: 'string',
+          samples: ['AS', 'DL', 'FL'],
+        },
+      },
+      type: 'object',
+    };
+    const doc = estInferToSampleDoc(schema);
+    expect(doc.airline).toBe('AS');
+  });
+
+  test('full travel-sample airline schema', () => {
+    const schema = {
+      '#docs': 7,
+      Flavor: '`type` = "airline"',
+      properties: {
+        callsign: { type: ['null', 'string'], samples: [[null], ['AIR SUNSHINE', 'CROWN AIRWAYS']] },
+        country: { type: 'string', samples: ['France', 'United Kingdom'] },
+        iata: { type: ['null', 'string'], samples: [[null], ['5Y', 'CJ']] },
+        icao: { type: 'string', samples: ['CFE', 'CRL'] },
+        id: { type: 'number', samples: [295, 1795] },
+        name: { type: 'string', samples: ['Air Sunshine', 'BA CityFlyer'] },
+        type: { type: 'string', samples: ['airline'] },
+      },
+      type: 'object',
+    };
+    const doc = estInferToSampleDoc(schema);
+    expect(doc.country).toBe('France');
+    expect(doc.icao).toBe('CFE');
+    expect(doc.id).toBe(295);
+    expect(doc.name).toBe('Air Sunshine');
+    expect(doc.type).toBe('airline');
+    // nullable fields should pick non-null sample
+    expect(doc.callsign).toBe('AIR SUNSHINE');
+    expect(doc.iata).toBe('5Y');
+  });
+
+  test('empty schema returns empty object', () => {
+    expect(estInferToSampleDoc({})).toEqual({});
+    expect(estInferToSampleDoc(null)).toEqual({});
+    expect(estInferToSampleDoc(undefined)).toEqual({});
+  });
+
+  test('property with no samples falls back to type default', () => {
+    const schema = {
+      properties: {
+        s: { type: 'string' },
+        n: { type: 'number' },
+        b: { type: 'boolean' },
+      },
+      type: 'object',
+    };
+    const doc = estInferToSampleDoc(schema);
+    expect(doc.s).toBe('');
+    expect(doc.n).toBe(0);
+    expect(doc.b).toBe(false);
+  });
+
+  test('array with number items', () => {
+    const schema = {
+      properties: {
+        scores: { type: 'array', items: { type: 'number' } },
+      },
+      type: 'object',
+    };
+    const doc = estInferToSampleDoc(schema);
+    expect(doc.scores).toEqual([0]);
+  });
+
+  test('array with no items schema and no samples falls back to null', () => {
+    const schema = {
+      properties: {
+        data: { type: 'array' },
+      },
+      type: 'object',
+    };
+    const doc = estInferToSampleDoc(schema);
+    // no items definition and no samples → falls through to null
+    expect(doc.data).toBeNull();
+  });
+
+  test('array with items but samples present uses first sample', () => {
+    const schema = {
+      properties: {
+        tags: { type: 'array', items: { type: 'string' }, samples: [['red', 'blue'], ['green']] },
+      },
+      type: 'object',
+    };
+    const doc = estInferToSampleDoc(schema);
+    expect(doc.tags).toEqual(['red', 'blue']);
+  });
+
+  test('nullable where all samples are null arrays', () => {
+    const schema = {
+      properties: {
+        tollfree: { type: ['null'], samples: [[null]] },
+      },
+      type: 'object',
+    };
+    const doc = estInferToSampleDoc(schema);
+    // type=['null'] → seeks non-null type, falls back to 'null'; samples=[[null]] iterates but finds no non-null
+    expect(doc.tollfree).toEqual([null]);
+  });
+
+  test('nested object with samples uses samples first', () => {
+    const schema = {
+      properties: {
+        geo: {
+          type: 'object',
+          properties: {
+            lat: { type: 'number', samples: [48.86] },
+            lon: { type: 'number', samples: [2.33] },
+          },
+          samples: [{ lat: 99, lon: 99 }],
+        },
+      },
+      type: 'object',
+    };
+    const doc = estInferToSampleDoc(schema);
+    // samples on the object itself take precedence
+    expect(doc.geo).toEqual({ lat: 99, lon: 99 });
+  });
+
+  test('generated doc is valid for estResolveField', () => {
+    const schema = {
+      properties: {
+        name: { type: 'string', samples: ['Test Airlines'] },
+        address: {
+          type: 'object',
+          properties: {
+            city: { type: 'string', samples: ['Dallas'] },
+            state: { type: 'string', samples: ['TX'] },
+          },
+        },
+      },
+      type: 'object',
+    };
+    const doc = estInferToSampleDoc(schema);
+    expect(estResolveField(doc, 'name')).toBe('Test Airlines');
+    expect(estResolveField(doc, 'address.city')).toBe('Dallas');
+    expect(estResolveField(doc, 'address.state')).toBe('TX');
+  });
+});
+
+// ────────────────────────────────────────────
+// estInferSampleValue — direct unit tests
+// ────────────────────────────────────────────
+describe('estInferSampleValue', () => {
+  test('null prop returns null', () => {
+    expect(estInferSampleValue(null)).toBeNull();
+    expect(estInferSampleValue(undefined)).toBeNull();
+  });
+
+  test('string with samples returns first sample', () => {
+    expect(estInferSampleValue({ type: 'string', samples: ['hello', 'world'] })).toBe('hello');
+  });
+
+  test('number with samples returns first sample', () => {
+    expect(estInferSampleValue({ type: 'number', samples: [42, 99] })).toBe(42);
+  });
+
+  test('boolean with samples returns first sample', () => {
+    expect(estInferSampleValue({ type: 'boolean', samples: [false, true] })).toBe(false);
+  });
+
+  test('string without samples returns empty string', () => {
+    expect(estInferSampleValue({ type: 'string' })).toBe('');
+  });
+
+  test('number without samples returns 0', () => {
+    expect(estInferSampleValue({ type: 'number' })).toBe(0);
+  });
+
+  test('boolean without samples returns false', () => {
+    expect(estInferSampleValue({ type: 'boolean' })).toBe(false);
+  });
+
+  test('null type returns null', () => {
+    expect(estInferSampleValue({ type: 'null', samples: [null] })).toBeNull();
+  });
+
+  test('nullable string picks non-null sample', () => {
+    expect(estInferSampleValue({
+      type: ['null', 'string'],
+      samples: [[null], ['Paris', 'London']],
+    })).toBe('Paris');
+  });
+
+  test('nullable with only null samples returns [null]', () => {
+    // [[null]] → iterates: [null] is an array, finds no non-null; falls through to samples[0]
+    expect(estInferSampleValue({
+      type: ['null', 'string'],
+      samples: [[null]],
+    })).toEqual([null]);
+  });
+
+  test('object with properties recurses', () => {
+    const result = estInferSampleValue({
+      type: 'object',
+      properties: {
+        x: { type: 'number', samples: [10] },
+      },
+    });
+    expect(result).toEqual({ x: 10 });
+  });
+
+  test('array with object items returns array of one sample object', () => {
+    const result = estInferSampleValue({
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          day: { type: 'number', samples: [0] },
+        },
+      },
+    });
+    expect(result).toEqual([{ day: 0 }]);
+  });
+
+  test('array with string items returns ["sample"]', () => {
+    expect(estInferSampleValue({ type: 'array', items: { type: 'string' } })).toEqual(['sample']);
+  });
+
+  test('array with number items returns [0]', () => {
+    expect(estInferSampleValue({ type: 'array', items: { type: 'number' } })).toEqual([0]);
+  });
+
+  test('array with no items returns null (no items definition)', () => {
+    // type='array' but no items property → falls through to null
+    expect(estInferSampleValue({ type: 'array' })).toBeNull();
+  });
+
+  test('unknown type returns null', () => {
+    expect(estInferSampleValue({ type: 'foobar' })).toBeNull();
+  });
+});
+
+// ────────────────────────────────────────────
+// INFER multi-flavor end-to-end
+// ────────────────────────────────────────────
+describe('INFER multi-flavor scenarios', () => {
+  const inferOutput = [[
+    {
+      '#docs': 750,
+      Flavor: '`type` = "route"',
+      type: 'object',
+      properties: {
+        airline: { type: 'string', samples: ['AS', 'DL'] },
+        sourceairport: { type: 'string', samples: ['CMH', 'IND'] },
+        stops: { type: 'number', samples: [0] },
+        type: { type: 'string', samples: ['route'] },
+      },
+    },
+    {
+      '#docs': 150,
+      Flavor: '`type` = "landmark"',
+      type: 'object',
+      properties: {
+        activity: { type: 'string', samples: ['buy', 'do'] },
+        city: { type: ['null', 'string'], samples: [[null], ['London', 'Paris']] },
+        country: { type: 'string', samples: ['France', 'United Kingdom'] },
+        type: { type: 'string', samples: ['landmark'] },
+      },
+    },
+    {
+      '#docs': 100,
+      Flavor: '`type` = "airline"',
+      type: 'object',
+      properties: {
+        name: { type: 'string', samples: ['Air France'] },
+        country: { type: 'string', samples: ['France'] },
+        type: { type: 'string', samples: ['airline'] },
+      },
+    },
+  ]];
+
+  test('estIsInferOutput detects multi-flavor data', () => {
+    expect(estIsInferOutput(inferOutput)).toBe(true);
+  });
+
+  test('unwraps nested array correctly', () => {
+    const arr = Array.isArray(inferOutput[0]) ? inferOutput[0] : inferOutput;
+    expect(arr).toHaveLength(3);
+  });
+
+  test('each flavor generates a valid sample doc', () => {
+    const arr = inferOutput[0];
+    const routeDoc = estInferToSampleDoc(arr[0]);
+    expect(routeDoc.airline).toBe('AS');
+    expect(routeDoc.sourceairport).toBe('CMH');
+    expect(routeDoc.stops).toBe(0);
+    expect(routeDoc.type).toBe('route');
+
+    const landmarkDoc = estInferToSampleDoc(arr[1]);
+    expect(landmarkDoc.activity).toBe('buy');
+    expect(landmarkDoc.city).toBe('London');
+    expect(landmarkDoc.country).toBe('France');
+    expect(landmarkDoc.type).toBe('landmark');
+
+    const airlineDoc = estInferToSampleDoc(arr[2]);
+    expect(airlineDoc.name).toBe('Air France');
+    expect(airlineDoc.type).toBe('airline');
+  });
+
+  test('selectivity can be computed from #docs', () => {
+    const arr = inferOutput[0];
+    const totalDocs = arr.reduce((s, sch) => s + (sch['#docs'] || 0), 0);
+    expect(totalDocs).toBe(1000);
+    expect(Math.round((arr[0]['#docs'] / totalDocs) * 100)).toBe(75); // route
+    expect(Math.round((arr[1]['#docs'] / totalDocs) * 100)).toBe(15); // landmark
+    expect(Math.round((arr[2]['#docs'] / totalDocs) * 100)).toBe(10); // airline
+  });
+
+  test('generated docs work with estCollatJsonSize', () => {
+    const arr = inferOutput[0];
+    const doc = estInferToSampleDoc(arr[2]); // airline
+    // Each field should produce a non-zero CollatJSON size
+    expect(estCollatJsonSize(doc.name)).toBeGreaterThan(0);
+    expect(estCollatJsonSize(doc.country)).toBeGreaterThan(0);
+    expect(estCollatJsonSize(doc.type)).toBeGreaterThan(0);
+  });
+
+  test('generated docs work with estResolveField for index key resolution', () => {
+    const arr = inferOutput[0];
+    const doc = estInferToSampleDoc(arr[1]); // landmark
+    expect(estResolveField(doc, 'activity')).toBe('buy');
+    expect(estResolveField(doc, 'city')).toBe('London');
+    expect(estResolveField(doc, 'country')).toBe('France');
+    expect(estResolveField(doc, 'missing_field')).toBeUndefined();
+  });
+});
+
+// ────────────────────────────────────────────
+// meta() fields in index parsing — extended
+// ────────────────────────────────────────────
+describe('estParseIndex meta() fields', () => {
+  test('meta().id with other meta fields in same index', () => {
+    const r = estParseIndex('CREATE INDEX idx ON `b`(meta().id, meta().expiration, name)');
+    expect(r.resolvedFields).toHaveLength(3);
+    expect(r.resolvedFields[0]).toMatchObject({ field: 'meta().id', isMeta: true });
+    expect(r.resolvedFields[1]).toMatchObject({ field: 'meta().expiration', isMeta: true });
+    expect(r.resolvedFields[2]).toMatchObject({ field: 'name', isMeta: false });
+  });
+
+  test('meta().cas is case-insensitive', () => {
+    const r = estParseIndex('CREATE INDEX idx ON `b`(META().CAS)');
+    expect(r.resolvedFields[0].field).toBe('meta().cas');
+    expect(r.resolvedFields[0].isMeta).toBe(true);
+  });
+
+  test('meta() with spaces parses correctly', () => {
+    const r = estParseIndex('CREATE INDEX idx ON `b`(meta( ).id)');
+    expect(r.resolvedFields[0].field).toBe('meta().id');
+    expect(r.resolvedFields[0].isMeta).toBe(true);
+  });
+
+  test('meta().rev field', () => {
+    const r = estParseIndex('CREATE INDEX idx ON `b`(meta().rev)');
+    expect(r.resolvedFields[0]).toMatchObject({ field: 'meta().rev', isMeta: true });
+  });
+
+  test('non-meta field named "meta" is not flagged as meta', () => {
+    const r = estParseIndex('CREATE INDEX idx ON `b`(metadata)');
+    expect(r.resolvedFields[0].isMeta).toBe(false);
+    expect(r.resolvedFields[0].field).toBe('metadata');
   });
 });

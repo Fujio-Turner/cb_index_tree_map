@@ -18,10 +18,12 @@
   .treemap-viewport{overflow:hidden;position:relative;border:1px solid #e5e7eb;border-radius:0.5rem}
   .treemap-viewport .chart-box{transform-origin:center center;transition:transform 0.2s ease}
   .est-code-textarea{font-family:'Courier New',Courier,monospace;font-size:0.85rem;line-height:1.4;tab-size:2}
-  .est-valid{background:rgba(34,197,94,0.08)!important;border-color:rgba(34,197,94,0.4)!important}
   .est-invalid{background:rgba(239,68,68,0.08)!important;border-color:rgba(239,68,68,0.4)!important}
   .est-chart{width:100%;height:320px}
   .est-tip{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;font-size:11px;font-weight:700;cursor:help;border:1.5px solid oklch(var(--bc)/.3);color:oklch(var(--bc)/.5);margin-left:5px;flex-shrink:0}
+  .est-needs-input{background:rgba(250,204,21,0.15)!important;border-color:rgba(234,179,8,0.4)!important}
+  .est-user-input{background:rgba(34,197,94,0.08)!important;border-color:rgba(34,197,94,0.4)!important}
+  .est-auto-filled{background:rgba(59,130,246,0.10)!important;border-color:rgba(59,130,246,0.4)!important}
 </style>
 </head>
 <body class="bg-base-200 min-h-screen">
@@ -31,7 +33,7 @@
   <div class="flex-1 gap-3">
     <span class="text-xl font-bold text-error">CB Index Treemap</span>
     <span class="text-xs text-base-content/50 hidden sm:inline">Visualize & analyze GSI index sizes, performance & capacity</span>
-    <span class="badge badge-ghost badge-sm text-[10px]">v2.5.0</span>
+    <span class="badge badge-ghost badge-sm text-[10px]">v2.5.1</span>
   </div>
   <div class="flex-none">
     <button class="btn btn-ghost btn-sm gap-1" onclick="openFileManager()"><span id="saved-count" class="badge badge-sm badge-ghost">0</span></button>
@@ -160,7 +162,7 @@
     <svg xmlns="http://www.w3.org/2000/svg" class="stroke-info shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
     <div>
       <p class="font-semibold">How it works</p>
-      <p class="text-sm">Paste a sample JSON document, a sample Document ID/Key, and a <code class="bg-info/20 px-1 rounded">CREATE INDEX</code> statement. This tool uses the actual Couchbase indexer internals — CollatJSON binary encoding, forward + back index dual-store layout, 2-byte entry trailers, and MOI skiplist node overhead (52 bytes) — to produce accurate size estimates for Plasma and Nitro engines.</p>
+      <p class="text-sm">Paste a sample JSON document (or the output of <code class="bg-info/20 px-1 rounded">INFER `bucket`</code>), a sample Document ID/Key, and a <code class="bg-info/20 px-1 rounded">CREATE INDEX</code> statement. This tool uses the actual Couchbase indexer internals — CollatJSON binary encoding, forward + back index dual-store layout, 2-byte entry trailers, and MOI skiplist node overhead (52 bytes) — to produce accurate size estimates for Plasma and Nitro engines.</p>
     </div>
   </div>
 
@@ -168,11 +170,21 @@
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
     <div class="card bg-base-100 shadow-sm">
       <div class="card-body">
-        <h2 class="card-title text-sm uppercase tracking-wider text-base-content/50 flex items-center">
-          Sample JSON Document
-          <span class="tooltip tooltip-right" data-tip="Paste a representative JSON document from your bucket. The tool will measure the byte size of each indexed field from this sample."><span class="est-tip">?</span></span>
-        </h2>
-        <textarea id="est-jsonInput" class="textarea textarea-bordered w-full h-56 est-code-textarea bg-base-200" placeholder='{"airline":"AA","name":"American Airlines",...}' oninput="estValidateJson()">{
+        <div role="tablist" class="tabs tabs-bordered tabs-sm mb-2">
+          <a role="tab" class="tab tab-active text-xs font-semibold" id="est-tab-json" onclick="estSwitchInputTab('json')">Sample JSON / INFER</a>
+          <a role="tab" class="tab text-xs font-semibold" id="est-tab-meta" onclick="estSwitchInputTab('meta')">Meta
+            <span class="tooltip tooltip-right ml-1" data-tip="Paste document metadata (from SDK or REST API). Used when your index includes meta() fields like meta().expiration, meta().cas, meta().type, etc."><span class="est-tip">?</span></span>
+          </a>
+        </div>
+        <div id="est-panel-json">
+          <div id="est-inferBar" class="hidden mb-2">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="badge badge-sm badge-info text-white">INFER detected</span>
+              <select id="est-inferFlavor" class="select select-bordered select-xs w-64" onchange="estPickInferFlavor()"></select>
+              <button class="btn btn-ghost btn-xs text-error" onclick="estClearInfer()">✕ Clear</button>
+            </div>
+          </div>
+          <textarea id="est-jsonInput" class="textarea textarea-bordered w-full h-52 est-code-textarea est-needs-input" placeholder='{"airline":"AA","name":"American Airlines",...}  — or paste INFER `bucket` output' oninput="estValidateJson()">{
   "airline": "AA",
   "name": "American Airlines",
   "callsign": "AMERICAN",
@@ -184,6 +196,20 @@
   "address": { "city": "Dallas", "state": "TX" },
   "tags": ["major", "domestic", "international"]
 }</textarea>
+        </div>
+        <div id="est-panel-meta" class="hidden">
+          <p class="text-xs text-base-content/40 mb-1">Paste document metadata. Used for indexes on <code>meta().expiration</code>, <code>meta().cas</code>, <code>meta().type</code>, etc.</p>
+          <textarea id="est-metaInput" class="textarea textarea-bordered w-full h-52 est-code-textarea est-needs-input" placeholder='{"meta":{"id":"doc_123","rev":"1-abc...","expiration":0,"flags":0,"type":"json"},"xattrs":{}}' oninput="estValidateMeta()">{
+  "meta": {
+    "id": "airline_10226",
+    "rev": "1-18a2bbeec7e700000000000000000000",
+    "expiration": 0,
+    "flags": 0,
+    "type": "json"
+  },
+  "xattrs": {}
+}</textarea>
+        </div>
       </div>
     </div>
     <div class="card bg-base-100 shadow-sm">
@@ -192,7 +218,7 @@
           SQL++ Index Definition
           <span class="tooltip tooltip-left" data-tip="Your CREATE INDEX statement. The tool extracts the indexed fields, keyspace name, and WHERE clause to calculate sizing."><span class="est-tip">?</span></span>
         </h2>
-        <textarea id="est-indexInput" class="textarea textarea-bordered w-full h-56 est-code-textarea bg-base-200" placeholder="CREATE INDEX idx_name ON `bucket`(field1, field2) WHERE type = 'x'" oninput="estValidateIndex()">CREATE INDEX idx_airline ON `travel-sample`(name, address.city, DISTINCT ARRAY t FOR t IN tags END) WHERE type = 'airline'</textarea>
+        <textarea id="est-indexInput" class="textarea textarea-bordered w-full h-56 est-code-textarea est-needs-input" placeholder="CREATE INDEX idx_name ON `bucket`(field1, field2) WHERE type = 'x'" oninput="estValidateIndex()">CREATE INDEX idx_airline ON `travel-sample`(name, address.city, DISTINCT ARRAY t FOR t IN tags END) WHERE type = 'airline'</textarea>
       </div>
     </div>
   </div>
@@ -208,7 +234,7 @@
               <span class="tooltip tooltip-right" data-tip="Every GSI index entry stores the full document ID (meta().id). Longer keys increase index size. Paste a representative key so the tool can measure its actual byte length."><span class="est-tip">?</span></span>
             </span>
           </label>
-          <input id="est-docIdInput" type="text" class="input input-bordered w-full bg-base-200 font-mono text-sm" value="airline_24" placeholder="e.g. airline_24 or user::john.doe@example.com" />
+          <input id="est-docIdInput" type="text" class="input input-bordered w-full font-mono text-sm est-needs-input" value="airline_24" placeholder="e.g. airline_24 or user::john.doe@example.com" oninput="estMarkUserInput(this)" />
         </div>
         <div class="flex items-center gap-3 pb-1">
           <span class="text-sm text-base-content/50">Computed ID size:</span>
@@ -244,7 +270,7 @@
               <span class="tooltip tooltip-right" data-tip="Total number of documents in your bucket (or the subset that this index will cover). This is the main scaling factor for total index size."><span class="est-tip">?</span></span>
             </span>
           </label>
-          <input id="est-numDocsDisplay" type="text" class="input input-bordered w-full" value="1,000,000" />
+          <input id="est-numDocsDisplay" type="text" class="input input-bordered w-full est-needs-input" value="1,000,000" />
           <input id="est-numDocs" type="hidden" value="1000000" />
         </div>
         <div class="form-control">
@@ -255,7 +281,7 @@
             </span>
           </label>
           <div class="join w-full">
-            <input id="est-selectivity" type="number" class="input input-bordered join-item w-full" value="100" min="1" max="100" />
+            <input id="est-selectivity" type="number" class="input input-bordered join-item w-full est-needs-input" value="100" min="1" max="100" oninput="estMarkUserInput(this)" />
             <span class="btn join-item no-animation bg-base-200 border-base-300 text-base-content/60">%</span>
           </div>
         </div>
@@ -3434,7 +3460,11 @@ function estTypeLabel(val){if(val===null||val===undefined)return'null/missing';i
 
 function estFormatNumberWithCommas(n){return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g,',')}
 
-function estSetupNumDocsInput(){const display=document.getElementById('est-numDocsDisplay'),hidden=document.getElementById('est-numDocs');display.addEventListener('input',function(){const raw=this.value.replace(/,/g,'').replace(/[^\d]/g,'');hidden.value=raw;const pos=this.selectionStart,oldLen=this.value.length;this.value=raw?estFormatNumberWithCommas(raw):'';const newLen=this.value.length;this.setSelectionRange(pos+(newLen-oldLen),pos+(newLen-oldLen))})}
+function estMarkUserInput(el){estSetInputState(el,'est-user-input')}
+function estMarkAutoFilled(el){estSetInputState(el,'est-auto-filled')}
+function estMarkNeedsInput(el){estSetInputState(el,'est-needs-input')}
+
+function estSetupNumDocsInput(){const display=document.getElementById('est-numDocsDisplay'),hidden=document.getElementById('est-numDocs');display.addEventListener('input',function(){const raw=this.value.replace(/,/g,'').replace(/[^\d]/g,'');hidden.value=raw;const pos=this.selectionStart,oldLen=this.value.length;this.value=raw?estFormatNumberWithCommas(raw):'';const newLen=this.value.length;this.setSelectionRange(pos+(newLen-oldLen),pos+(newLen-oldLen));estMarkUserInput(this)})}
 
 function estSetupDocIdInput(){const input=document.getElementById('est-docIdInput'),badge=document.getElementById('est-computedIdSize');function update(){badge.textContent=new TextEncoder().encode(input.value).length+' bytes'}input.addEventListener('input',update);update()}
 
@@ -3451,7 +3481,8 @@ function estParseIndex(sql){
   const whereClause=whereMatch?whereMatch[1].trim():null;
   function splitTopLevel(s){const parts=[];let d=0,cur='';for(let i=0;i<s.length;i++){if(s[i]==='(')d++;else if(s[i]===')')d--;else if(s[i]===','&&d===0){parts.push(cur.trim());cur='';continue}cur+=s[i]}if(cur.trim())parts.push(cur.trim());return parts}
   const resolvedFields=keyExpressions.map(expr=>{
-    if(expr.match(/^meta\s*\(\s*\)\s*\.\s*id$/i))return{expr,field:'meta().id',isArray:false,isMeta:true};
+    const metaMatch=expr.match(/^meta\s*\(\s*\)\s*\.\s*(\w+)$/i);
+    if(metaMatch)return{expr,field:'meta().'+metaMatch[1].toLowerCase(),isArray:false,isMeta:true};
     const fullArrMatch=expr.match(/^(DISTINCT|ALL)\s+ARRAY\s+(.+?)\s+FOR\s+(\w+)\s+(?:IN|WITHIN)\s+(.+?)\s+(?:WHEN\s+.+?\s+)?END$/i);
     if(fullArrMatch){const mode=fullArrMatch[1].toUpperCase(),varExpr=fullArrMatch[2].trim(),varName=fullArrMatch[3].trim(),arrayField=fullArrMatch[4].trim();const fkMatch=varExpr.match(/^FLATTEN_KEYS\s*\((.+)\)$/i);let subExprs;if(fkMatch){subExprs=splitTopLevel(fkMatch[1]).map(a=>a.replace(/\s+(ASC|DESC|INCLUDE\s+MISSING)\s*/gi,'').trim())}else{subExprs=[varExpr]}return{expr,field:arrayField,isArray:true,isMeta:false,arrayMode:mode,arrayVar:varName,arraySubExprs:subExprs}}
     const simpleArrMatch=expr.match(/^(DISTINCT|ALL)\s+(.+)$/i);
@@ -3477,11 +3508,25 @@ function estCalculate(){
   const diskMult=parseFloat(document.getElementById('est-diskMultiplier').value)||1.5;
   const arrayExpansionOverride=parseInt(document.getElementById('est-arrayExpansion').value)||0;
 
+  // Parse meta input
+  let metaDoc=null;
+  try{const metaRaw=document.getElementById('est-metaInput').value.trim();if(metaRaw)metaDoc=JSON.parse(metaRaw)}catch(e){}
+
   const fieldRows=[];let hasArrayIndex=false;let autoArrayExpansion=1;
   function resolveVarExpr(element,varName,varExpr){const cleanExpr=varExpr.replace(/`/g,'').trim();if(cleanExpr===varName)return element;const prefix=varName+'.';if(cleanExpr.startsWith(prefix)||cleanExpr.startsWith(varName+'[')){const subPath=cleanExpr.substring(varName.length+(cleanExpr[varName.length]==='.'?1:0));if(element!=null&&typeof element==='object')return estResolveField(element,subPath)}return element}
 
+  function resolveMetaField(field){
+    const prop=field.replace(/^meta\(\)\./,'');
+    if(prop==='id')return docIdVal;
+    if(metaDoc){
+      if(metaDoc.meta&&metaDoc.meta[prop]!==undefined)return metaDoc.meta[prop];
+      if(metaDoc[prop]!==undefined)return metaDoc[prop];
+    }
+    return undefined;
+  }
+
   parsed.resolvedFields.forEach(rf=>{
-    if(rf.isMeta){const metaVal=docIdVal;fieldRows.push({expr:rf.expr,field:rf.field,value:metaVal,type:'string (meta().id)',rawSize:new TextEncoder().encode(metaVal).length,collatSize:estCollatJsonStringSize(metaVal),isArray:false,arrayInfo:null});return}
+    if(rf.isMeta){const metaVal=resolveMetaField(rf.field);const typeLabel=rf.field==='meta().id'?'string (meta().id)':estTypeLabel(metaVal)+' ('+rf.field+')';const cs=metaVal!==undefined?estCollatJsonSize(metaVal):2;const rs=metaVal!==undefined?estRawSize(metaVal):0;fieldRows.push({expr:rf.expr,field:rf.field,value:metaVal,type:typeLabel,rawSize:rs,collatSize:cs,isArray:false,arrayInfo:null});return}
     if(rf.isArray){hasArrayIndex=true;const arr=estResolveField(doc,rf.field);if(!Array.isArray(arr)||arr.length===0){fieldRows.push({expr:rf.expr,field:rf.field,value:arr,type:'array (empty/missing)',rawSize:0,collatSize:2,isArray:true,arrayInfo:{count:0,mode:rf.arrayMode||'DISTINCT',perElement:'—'}});return}
     let indexedValues;if(rf.arraySubExprs){if(rf.arraySubExprs.length===1){indexedValues=arr.map(el=>resolveVarExpr(el,rf.arrayVar,rf.arraySubExprs[0]))}else{indexedValues=arr.map(el=>rf.arraySubExprs.map(se=>resolveVarExpr(el,rf.arrayVar,se)))}}else{indexedValues=arr}
     const mode=rf.arrayMode||'DISTINCT';let effectiveValues=indexedValues;if(mode==='DISTINCT'){const seen=new Set();effectiveValues=indexedValues.filter(v=>{const key=JSON.stringify(v);if(seen.has(key))return false;seen.add(key);return true})}
@@ -3561,7 +3606,7 @@ function estCalculate(){
 
   // Field table
   const tbody=document.querySelector('#est-fieldTable tbody');
-  tbody.innerHTML=`<tr class="bg-warning/10"><td><code>meta().id</code></td><td class="max-w-xs truncate"><code class="text-xs">"${docIdVal}"</code></td><td><span class="badge badge-outline badge-sm">string (doc key)</span></td><td class="font-mono">${D}</td><td class="font-mono text-base-content/40">${D} <span class="text-[10px]">(stored raw)</span></td></tr>`+fieldRows.map(r=>`<tr class="${r.isArray?'bg-secondary/10':''}"><td><code>${r.expr}</code>${r.arrayInfo?`<br/><span class="text-[10px] text-secondary">${r.arrayInfo.mode} · ${r.arrayInfo.count} entries · ${r.arrayInfo.perElement}</span>`:''}</td><td class="max-w-xs truncate"><code class="text-xs">${JSON.stringify(r.value)}${r.isArray&&r.arrayInfo&&r.arrayInfo.count>5?' …':''}</code></td><td><span class="badge badge-outline badge-sm ${r.isArray?'badge-secondary':''}">${r.type}</span></td><td class="font-mono">${r.rawSize}</td><td class="font-mono font-semibold">${r.collatSize}</td></tr>`).join('');
+  tbody.innerHTML=`<tr class="bg-warning/10"><td><code>meta().id</code></td><td class="max-w-xs truncate"><code class="text-xs">"${docIdVal}"</code></td><td><span class="badge badge-outline badge-sm">string (doc key)</span></td><td class="font-mono">${D}</td><td class="font-mono text-base-content/40">${D} <span class="text-[10px]">(stored raw)</span></td></tr>`+fieldRows.map(r=>{const rowCls=r.isArray?'bg-secondary/10':(r.field&&r.field.startsWith('meta().')?'bg-accent/10':'');return`<tr class="${rowCls}"><td><code>${r.expr}</code>${r.arrayInfo?`<br/><span class="text-[10px] text-secondary">${r.arrayInfo.mode} · ${r.arrayInfo.count} entries · ${r.arrayInfo.perElement}</span>`:''}</td><td class="max-w-xs truncate"><code class="text-xs">${JSON.stringify(r.value)}${r.isArray&&r.arrayInfo&&r.arrayInfo.count>5?' …':''}</code></td><td><span class="badge badge-outline badge-sm ${r.isArray?'badge-secondary':''}">${r.type}</span></td><td class="font-mono">${r.rawSize}</td><td class="font-mono font-semibold">${r.collatSize}</td></tr>`}).join('');
 
   // Charts
   const textColor=getComputedStyle(document.documentElement).getPropertyValue('color')||'#475569';const splitColor='#e5e7eb';
@@ -3611,16 +3656,21 @@ function estToast(msg){
   estToastTimer=setTimeout(()=>t.classList.add('hidden'),5000);
 }
 
-function estSetValid(el){el.classList.remove('est-invalid');el.classList.add('est-valid')}
-function estSetInvalid(el){el.classList.remove('est-valid');el.classList.add('est-invalid')}
-function estSetNeutral(el){el.classList.remove('est-valid','est-invalid')}
+const EST_INPUT_CLASSES=['est-needs-input','est-user-input','est-auto-filled','est-invalid'];
+function estSetInputState(el,cls){EST_INPUT_CLASSES.forEach(c=>el.classList.remove(c));if(cls)el.classList.add(cls)}
+function estSetValid(el){estSetInputState(el,'est-user-input')}
+function estSetInvalid(el){estSetInputState(el,'est-invalid')}
+function estSetNeutral(el){estSetInputState(el,'est-needs-input')}
+function estSetAutoFilled(el){estSetInputState(el,'est-auto-filled')}
 
 function estValidateJson(){
   const ta=document.getElementById('est-jsonInput');
   const val=ta.value.trim();
-  if(!val){estSetNeutral(ta);return}
+  if(!val){estSetNeutral(ta);document.getElementById('est-inferBar').classList.add('hidden');estInferSchemas=null;return}
   try{
     const parsed=JSON.parse(val);
+    if(estIsInferOutput(parsed)){estSetAutoFilled(ta);estHandleInfer(parsed);return}
+    document.getElementById('est-inferBar').classList.add('hidden');estInferSchemas=null;
     if(parsed===null||typeof parsed!=='object'||Array.isArray(parsed)){
       estSetInvalid(ta);estToast('JSON must be a single object { }, not an array or primitive.');return;
     }
@@ -3709,9 +3759,149 @@ function estValidateIndex(){
   }
 }
 
+// ─── Estimator input tab switching ───────────────────────────────────────────
+
+function estSwitchInputTab(tab){
+  document.getElementById('est-tab-json').classList.toggle('tab-active',tab==='json');
+  document.getElementById('est-tab-meta').classList.toggle('tab-active',tab==='meta');
+  document.getElementById('est-panel-json').classList.toggle('hidden',tab!=='json');
+  document.getElementById('est-panel-meta').classList.toggle('hidden',tab!=='meta');
+}
+
+function estValidateMeta(){
+  const ta=document.getElementById('est-metaInput');
+  const val=ta.value.trim();
+  if(!val){estSetNeutral(ta);return}
+  try{
+    const parsed=JSON.parse(val);
+    if(parsed===null||typeof parsed!=='object'||Array.isArray(parsed)){
+      estSetInvalid(ta);estToast('Meta must be a JSON object { }.');return;
+    }
+    estSetValid(ta);
+    // Auto-fill Document ID from meta.id (the Couchbase document key)
+    const metaId=(parsed.meta&&parsed.meta.id)||parsed.id;
+    if(metaId!=null){
+      const idInput=document.getElementById('est-docIdInput');
+      idInput.value=String(metaId);
+      idInput.dispatchEvent(new Event('input'));
+      estMarkAutoFilled(idInput);
+    }
+  }catch(e){
+    estSetInvalid(ta);estToast('Invalid meta JSON: '+e.message);
+  }
+}
+
+// ─── INFER schema support ────────────────────────────────────────────────────
+
+let estInferSchemas=null; // stashed INFER output when detected
+
+function estIsInferOutput(data){
+  if(!Array.isArray(data))return false;
+  const arr=Array.isArray(data[0])?data[0]:data;
+  if(!arr.length)return false;
+  return arr.every(s=>s&&typeof s==='object'&&s.properties&&s.type==='object');
+}
+
+function estInferToSampleDoc(schema){
+  const doc={};
+  if(!schema||!schema.properties)return doc;
+  for(const[key,prop]of Object.entries(schema.properties)){
+    doc[key]=estInferSampleValue(prop);
+  }
+  return doc;
+}
+
+function estInferSampleValue(prop){
+  if(!prop)return null;
+  let typ=prop.type;
+  if(Array.isArray(typ))typ=typ.find(t=>t!=='null')||typ[0];
+  let samples=prop.samples;
+  if(Array.isArray(samples)&&samples.length){
+    // samples can be nested arrays when type is an array of types (e.g. [null, "string"])
+    // pick the first non-null sample set
+    if(Array.isArray(prop.type)){
+      for(const s of samples){
+        if(Array.isArray(s)){const nonnull=s.find(v=>v!==null);if(nonnull!==undefined&&nonnull!==null)return nonnull}
+        else if(s!==null&&s!==undefined)return s;
+      }
+      return samples[0]!=null?samples[0]:null;
+    }
+    const first=samples[0];
+    if(first!==undefined&&first!==null)return first;
+  }
+  if(typ==='object'&&prop.properties)return estInferToSampleDoc(prop);
+  if(typ==='array'&&prop.items){
+    if(prop.items.properties)return[estInferToSampleDoc(prop.items)];
+    if(prop.items.type==='string')return['sample'];
+    if(prop.items.type==='number')return[0];
+    return[];
+  }
+  if(typ==='string')return'';
+  if(typ==='number')return 0;
+  if(typ==='boolean')return false;
+  return null;
+}
+
+function estInferFlavorLabel(schema,idx){
+  if(schema.Flavor)return schema.Flavor;
+  return'Type '+(idx+1)+' ('+Object.keys(schema.properties||{}).length+' fields)';
+}
+
+function estHandleInfer(data){
+  const arr=Array.isArray(data[0])?data[0]:data;
+  estInferSchemas=arr;
+  const sel=document.getElementById('est-inferFlavor');
+  sel.innerHTML=arr.map((s,i)=>{
+    const docs=s['#docs']||'?';
+    return`<option value="${i}">${estInferFlavorLabel(s,i)} (${docs} docs)</option>`;
+  }).join('');
+  document.getElementById('est-inferBar').classList.remove('hidden');
+  estPickInferFlavor();
+}
+
+function estPickInferFlavor(){
+  if(!estInferSchemas)return;
+  const idx=parseInt(document.getElementById('est-inferFlavor').value)||0;
+  const schema=estInferSchemas[idx];
+  const doc=estInferToSampleDoc(schema);
+  const ta=document.getElementById('est-jsonInput');
+  ta.value=JSON.stringify(doc,null,2);
+  estSetAutoFilled(ta);
+
+  // Auto-fill Number of Documents from #docs
+  if(schema['#docs']){
+    const numDocsDisplay=document.getElementById('est-numDocsDisplay');
+    const numDocsHidden=document.getElementById('est-numDocs');
+    numDocsDisplay.value=estFormatNumberWithCommas(schema['#docs']);
+    numDocsHidden.value=schema['#docs'];
+    estMarkAutoFilled(numDocsDisplay);
+  }
+
+  // Auto-fill WHERE Selectivity from flavor #docs vs total
+  const totalDocs=estInferSchemas.reduce((s,sch)=>s+(sch['#docs']||0),0);
+  if(totalDocs>0&&schema['#docs']){
+    const pct=Math.round((schema['#docs']/totalDocs)*100);
+    const selInput=document.getElementById('est-selectivity');
+    selInput.value=pct;
+    estMarkAutoFilled(selInput);
+  }
+
+}
+
+function estClearInfer(){
+  estInferSchemas=null;
+  document.getElementById('est-inferBar').classList.add('hidden');
+  const ta=document.getElementById('est-jsonInput');
+  ta.value='';
+  estSetNeutral(ta);
+  // Reset INFER-auto-filled fields back to needs-input
+  estMarkNeedsInput(document.getElementById('est-numDocsDisplay'));
+  estMarkNeedsInput(document.getElementById('est-selectivity'));
+}
+
 // Init estimator when tab is first shown
 let estInitialized=false;
-function estInit(){if(estInitialized)return;estInitialized=true;estSetupNumDocsInput();estSetupDocIdInput();estOnEngineChange();estValidateJson();estValidateIndex()}
+function estInit(){if(estInitialized)return;estInitialized=true;estSetupNumDocsInput();estSetupDocIdInput();estOnEngineChange()}
 </script>
 
 <!-- Dev Debug Panel (only visible with ?dev=true) -->
