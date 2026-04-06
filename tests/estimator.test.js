@@ -3,6 +3,8 @@ const {
   estRawSize, estTokenizePath, estResolveField, estParseIndex,
   estValidateJsonStr, estValidateIndexStr,
   estIsInferOutput, estInferToSampleDoc, estInferSampleValue,
+  estNormalizeFields, estFieldSimilarity, estFieldOrderSimilarity,
+  estClassifyRelationship,
 } = require('../lib/pure');
 
 // ────────────────────────────────────────────
@@ -1176,5 +1178,309 @@ describe('estParseIndex meta() fields', () => {
     const r = estParseIndex('CREATE INDEX idx ON `b`(metadata)');
     expect(r.resolvedFields[0].isMeta).toBe(false);
     expect(r.resolvedFields[0].field).toBe('metadata');
+  });
+});
+
+// ────────────────────────────────────────────
+// estParseIndex — scope & collection awareness
+// ────────────────────────────────────────────
+describe('estParseIndex scope & collection', () => {
+  test('bucket only → defaults to _default scope and collection', () => {
+    const r = estParseIndex('CREATE INDEX idx ON `travel-sample`(name)');
+    expect(r.bucket).toBe('travel-sample');
+    expect(r.scope).toBe('_default');
+    expect(r.collection).toBe('_default');
+    expect(r.keyspace).toBe('travel-sample');
+  });
+
+  test('fully qualified bucket.scope.collection', () => {
+    const r = estParseIndex('CREATE INDEX idx ON `mybucket`.`myscope`.`mycollection`(field1)');
+    expect(r.bucket).toBe('mybucket');
+    expect(r.scope).toBe('myscope');
+    expect(r.collection).toBe('mycollection');
+    expect(r.keyspace).toBe('mybucket');
+  });
+
+  test('two-part path → bucket.collection (scope defaults)', () => {
+    const r = estParseIndex('CREATE INDEX idx ON `mybucket`.`mycollection`(field1)');
+    expect(r.bucket).toBe('mybucket');
+    expect(r.scope).toBe('_default');
+    expect(r.collection).toBe('mycollection');
+  });
+
+  test('fully qualified with _default scope and _default collection', () => {
+    const r = estParseIndex('CREATE INDEX idx ON `pillowfight`.`_default`.`_default`(field1)');
+    expect(r.bucket).toBe('pillowfight');
+    expect(r.scope).toBe('_default');
+    expect(r.collection).toBe('_default');
+  });
+
+  test('bucket-only matches fully qualified _default._default', () => {
+    const r1 = estParseIndex('CREATE INDEX idx ON `mybucket`(field1)');
+    const r2 = estParseIndex('CREATE INDEX idx ON `mybucket`.`_default`.`_default`(field1)');
+    expect(r1.bucket).toBe(r2.bucket);
+    expect(r1.scope).toBe(r2.scope);
+    expect(r1.collection).toBe(r2.collection);
+  });
+
+  test('keys still parsed correctly with scoped keyspace', () => {
+    const r = estParseIndex('CREATE INDEX idx ON `b`.`s`.`c`(field1, field2) WHERE type = "x"');
+    expect(r.bucket).toBe('b');
+    expect(r.scope).toBe('s');
+    expect(r.collection).toBe('c');
+    expect(r.keyExpressions).toEqual(['field1', 'field2']);
+    expect(r.whereClause).toBe('type = "x"');
+  });
+
+  test('IF NOT EXISTS with scoped keyspace', () => {
+    const r = estParseIndex('CREATE INDEX IF NOT EXISTS idx ON `b`.`s`.`c`(name)');
+    expect(r.indexName).toBe('idx');
+    expect(r.bucket).toBe('b');
+    expect(r.scope).toBe('s');
+    expect(r.collection).toBe('c');
+  });
+});
+
+// ────────────────────────────────────────────
+// estNormalizeFields
+// ────────────────────────────────────────────
+describe('estNormalizeFields', () => {
+  test('normalizes backtick-quoted fields to lowercase', () => {
+    expect(estNormalizeFields(['`Field_2`', '`Field_17`'])).toEqual(['field_2', 'field_17']);
+  });
+
+  test('returns empty for null/empty', () => {
+    expect(estNormalizeFields(null)).toEqual([]);
+    expect(estNormalizeFields([])).toEqual([]);
+  });
+
+  test('strips reserved words', () => {
+    const result = estNormalizeFields(['DISTINCT ARRAY t FOR t IN tags END']);
+    expect(result).toContain('tags');
+    expect(result).not.toContain('distinct');
+    expect(result).not.toContain('array');
+  });
+
+  test('handles mixed regular and dotted keys', () => {
+    const result = estNormalizeFields(['`name`', '`address`.`city`']);
+    expect(result).toContain('name');
+    expect(result).toContain('address.city');
+  });
+});
+
+// ────────────────────────────────────────────
+// estFieldSimilarity — Jaccard similarity
+// ────────────────────────────────────────────
+describe('estFieldSimilarity', () => {
+  test('identical fields → 100%', () => {
+    expect(estFieldSimilarity(['a', 'b'], ['a', 'b'])).toBe(100);
+  });
+
+  test('no overlap → 0%', () => {
+    expect(estFieldSimilarity(['a', 'b'], ['c', 'd'])).toBe(0);
+  });
+
+  test('partial overlap', () => {
+    // intersection=1 (a), union=3 (a,b,c) → 33%
+    expect(estFieldSimilarity(['a', 'b'], ['a', 'c'])).toBe(33);
+  });
+
+  test('superset → less than 100%', () => {
+    // intersection=2 (a,b), union=3 (a,b,c) → 67%
+    expect(estFieldSimilarity(['a', 'b'], ['a', 'b', 'c'])).toBe(67);
+  });
+
+  test('both empty → 100%', () => {
+    expect(estFieldSimilarity([], [])).toBe(100);
+  });
+
+  test('one empty → 0%', () => {
+    expect(estFieldSimilarity(['a'], [])).toBe(0);
+    expect(estFieldSimilarity([], ['a'])).toBe(0);
+  });
+
+  test('single shared field out of many', () => {
+    // intersection=1 (a), union=5 → 20%
+    expect(estFieldSimilarity(['a', 'b', 'c'], ['a', 'd', 'e'])).toBe(20);
+  });
+});
+
+// ────────────────────────────────────────────
+// estFieldOrderSimilarity — positional match
+// ────────────────────────────────────────────
+describe('estFieldOrderSimilarity', () => {
+  test('identical fields and order → 100%', () => {
+    expect(estFieldOrderSimilarity(['a', 'b', 'c'], ['a', 'b', 'c'])).toBe(100);
+  });
+
+  test('same fields, different order → partial', () => {
+    // position 0: a=a ✓, position 1: b≠c, position 2: c≠b → 1/3 = 33%
+    expect(estFieldOrderSimilarity(['a', 'b', 'c'], ['a', 'c', 'b'])).toBe(33);
+  });
+
+  test('completely different → 0%', () => {
+    expect(estFieldOrderSimilarity(['a', 'b'], ['c', 'd'])).toBe(0);
+  });
+
+  test('different lengths — shorter is subset', () => {
+    // position 0: a=a ✓, position 1: b=b ✓ → 2/3 = 67%
+    expect(estFieldOrderSimilarity(['a', 'b'], ['a', 'b', 'c'])).toBe(67);
+  });
+
+  test('one empty → 0%', () => {
+    expect(estFieldOrderSimilarity([], ['a'])).toBe(0);
+    expect(estFieldOrderSimilarity(['a'], [])).toBe(0);
+  });
+
+  test('both empty → 0%', () => {
+    expect(estFieldOrderSimilarity([], [])).toBe(0);
+  });
+
+  test('single field match', () => {
+    expect(estFieldOrderSimilarity(['a'], ['a'])).toBe(100);
+  });
+
+  test('single field no match', () => {
+    expect(estFieldOrderSimilarity(['a'], ['b'])).toBe(0);
+  });
+});
+
+// ────────────────────────────────────────────
+// estClassifyRelationship — index comparison classification
+// ────────────────────────────────────────────
+describe('estClassifyRelationship', () => {
+  const B = 'bucket', S = '_default', C = '_default';
+  const classify = (newF, newW, existF, existW, eB, eS, eC) =>
+    estClassifyRelationship(newF, newW, B, S, C, existF, existW, eB || B, eS || S, eC || C);
+
+  // ── Exact duplicate ──
+  test('exact: same fields, same order, same WHERE, same target', () => {
+    const r = classify(['a', 'b'], '', ['a', 'b'], '');
+    expect(r.relationship).toBe('exact');
+  });
+
+  test('exact: both have same WHERE clause', () => {
+    const r = classify(['a'], "type = 'x'", ['a'], "type = 'x'");
+    expect(r.relationship).toBe('exact');
+  });
+
+  test('exact: WHERE clause comparison is case-insensitive', () => {
+    const r = classify(['a'], "Type = 'X'", ['a'], "type = 'X'");
+    expect(r.relationship).toBe('exact');
+  });
+
+  // ── Same fields (same order, different WHERE — both have WHERE) ──
+  test('same-fields: same order, both have WHERE but different', () => {
+    const r = classify(['a', 'b'], "type = 'x'", ['a', 'b'], "type = 'y'");
+    expect(r.relationship).toBe('same-fields');
+  });
+
+  // ── Same fields (different order, no WHERE) ──
+  test('same-fields: same fields reversed order, no WHERE', () => {
+    const r = classify(['a', 'b'], '', ['b', 'a'], '');
+    expect(r.relationship).toBe('same-fields');
+    expect(r.desc).toMatch(/different order/i);
+  });
+
+  test('same-fields: three fields shuffled', () => {
+    const r = classify(['a', 'b', 'c'], '', ['c', 'a', 'b'], '');
+    expect(r.relationship).toBe('same-fields');
+  });
+
+  // ── Replaces (new is superset, existing has NO WHERE) ──
+  test('replaces: new superset of existing, no WHERE on either', () => {
+    const r = classify(['a', 'b', 'c'], '', ['a', 'b'], '');
+    expect(r.relationship).toBe('replaces');
+    expect(r.desc).toMatch(/superset/i);
+  });
+
+  test('replaces: does NOT trigger when existing has WHERE', () => {
+    const r = classify(['a', 'b', 'c'], '', ['a', 'b'], "type = 'x'");
+    expect(r.relationship).not.toBe('replaces');
+  });
+
+  // ── Covered-by (existing is superset) ──
+  test('covered-by: existing superset, same WHERE', () => {
+    const r = classify(['a'], '', ['a', 'b', 'c'], '');
+    expect(r.relationship).toBe('covered-by');
+  });
+
+  test('covered-by: existing superset with WHERE, new has no WHERE', () => {
+    const r = classify(['a'], '', ['a', 'b', 'c'], "type = 'x'");
+    expect(r.relationship).toBe('covered-by');
+  });
+
+  // ── Similar ──
+  test('similar: partial field overlap ≥30%', () => {
+    const r = classify(['a', 'b'], '', ['a', 'c'], '');
+    expect(r.relationship).toBe('similar');
+  });
+
+  test('similar: adds WHERE note when existing has WHERE', () => {
+    const r = classify(['a', 'b'], '', ['a', 'c'], "type = 'x'");
+    expect(r.relationship).toBe('similar');
+    expect(r.desc).toMatch(/WHERE clause/i);
+  });
+
+  // ── None ──
+  test('none: completely different fields', () => {
+    const r = classify(['a', 'b'], '', ['c', 'd'], '');
+    expect(r.relationship).toBe('none');
+  });
+
+  test('none: different bucket', () => {
+    const r = classify(['a', 'b'], '', ['a', 'b'], '', 'other_bucket');
+    expect(r.relationship).toBe('none');
+  });
+
+  test('none: low similarity below 30%', () => {
+    const r = classify(['a', 'b', 'c', 'd'], '', ['a', 'x', 'y', 'z'], '');
+    // intersection=1 (a), union=7 → 14% < 30%
+    expect(r.relationship).toBe('none');
+  });
+
+  // ── WHERE mismatch prevents "replaces" ──
+  test('existing with WHERE + subset fields → similar, not replaces', () => {
+    const r = classify(['field_1', 'field_17'], '', ['field_1'], "field_1 like '%test%'");
+    expect(r.relationship).not.toBe('replaces');
+  });
+
+  // ── WHERE mismatch prevents "same-fields" when one side has WHERE ──
+  test('same fields+order but only existing has WHERE → similar', () => {
+    const r = classify(['a', 'b'], '', ['a', 'b'], "type = 'x'");
+    expect(r.relationship).toBe('similar');
+  });
+
+  test('same fields+order but only new has WHERE → similar', () => {
+    const r = classify(['a', 'b'], "type = 'x'", ['a', 'b'], '');
+    expect(r.relationship).toBe('similar');
+  });
+
+  // ── Sort order: exact should rank before similar ──
+  test('sort order values: exact < same-fields < replaces < covered-by < similar', () => {
+    const order = { exact: 0, 'same-fields': 1, replaces: 2, 'covered-by': 3, similar: 4 };
+    expect(order.exact).toBeLessThan(order['same-fields']);
+    expect(order['same-fields']).toBeLessThan(order.replaces);
+    expect(order.replaces).toBeLessThan(order['covered-by']);
+    expect(order['covered-by']).toBeLessThan(order.similar);
+  });
+
+  // ── Scope/collection matching ──
+  test('exact: default scope matches explicit _default', () => {
+    const r = estClassifyRelationship(['a'], '', 'b', '_default', '_default',
+                                       ['a'], '', 'b', '_default', '_default');
+    expect(r.relationship).toBe('exact');
+  });
+
+  test('none: different scope', () => {
+    const r = estClassifyRelationship(['a'], '', 'b', 'scope1', 'c',
+                                       ['a'], '', 'b', 'scope2', 'c');
+    expect(r.relationship).toBe('none');
+  });
+
+  test('none: different collection', () => {
+    const r = estClassifyRelationship(['a'], '', 'b', 's', 'col1',
+                                       ['a'], '', 'b', 's', 'col2');
+    expect(r.relationship).toBe('none');
   });
 });

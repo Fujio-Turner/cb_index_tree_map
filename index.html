@@ -33,7 +33,7 @@
   <div class="flex-1 gap-3">
     <span class="text-xl font-bold text-error">CB Index Treemap</span>
     <span class="text-xs text-base-content/50 hidden sm:inline">Visualize & analyze GSI index sizes, performance & capacity</span>
-    <span class="badge badge-ghost badge-sm text-[10px]">v2.5.1</span>
+    <span class="badge badge-ghost badge-sm text-[10px]">v2.5.2</span>
   </div>
   <div class="flex-none">
     <button class="btn btn-ghost btn-sm gap-1" onclick="openFileManager()"><span id="saved-count" class="badge badge-sm badge-ghost">0</span></button>
@@ -239,6 +239,10 @@
         <div class="flex items-center gap-3 pb-1">
           <span class="text-sm text-base-content/50">Computed ID size:</span>
           <span id="est-computedIdSize" class="badge badge-lg font-mono">10 bytes</span>
+          <button id="est-compare-btn" class="btn btn-sm btn-outline btn-info" onclick="estCompareToExisting()" title="Compare this new index against existing system indexes to find duplicates, replaceable indexes, and similar indexes">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+            Compare to Existing <span id="est-compare-count" class="badge badge-sm badge-info text-white ml-1 hidden">0</span>
+          </button>
         </div>
       </div>
     </div>
@@ -413,6 +417,25 @@
   <!-- Error Toast -->
   <div id="est-errorToast" class="toast toast-end hidden">
     <div class="alert alert-error"><span id="est-errorMsg"></span></div>
+  </div>
+</div>
+
+<!-- Index Comparison Overlay -->
+<div id="est-compare-overlay" class="fixed inset-0 z-[9000] bg-base-200/95 overflow-y-auto hidden" onkeydown="if(event.key==='Escape')this.classList.add('hidden')" tabindex="-1">
+  <div class="max-w-6xl mx-auto p-6">
+    <div class="flex items-center justify-between mb-6">
+      <h2 class="text-2xl font-bold text-base-content">Index Comparison Results</h2>
+      <div class="flex items-center gap-2">
+        <button class="btn btn-sm btn-outline btn-ghost gap-1" id="est-compare-toggle-all-btn" onclick="estCompareToggleAll()" title="Show or hide details for all existing indexes">
+          <span id="est-compare-toggle-all-label">Show All Details</span>
+        </button>
+        <button class="btn btn-sm btn-outline btn-info gap-1" id="est-compare-copy-btn" onclick="estCompareCopyJson(this)" title="Copy comparison results as JSON">
+          Copy JSON
+        </button>
+        <button class="btn btn-circle btn-ghost btn-lg" onclick="document.getElementById('est-compare-overlay').classList.add('hidden')" title="Close">✕</button>
+      </div>
+    </div>
+    <div id="est-compare-body"></div>
   </div>
 </div>
 
@@ -847,7 +870,7 @@ return h+'</tbody></table></div>'}
 document.addEventListener('click',function(e){const th=e.target.closest('.stats-table th');if(!th)return;const col=th.dataset.col;if(!col)return;const table=th.closest('table'),tbody=table.querySelector('tbody'),rows=Array.from(tbody.querySelectorAll('tr:not(:last-child)')),isAsc=th.classList.contains('sa-asc');table.querySelectorAll('th').forEach(h=>{h.classList.remove('sa-asc','sa-desc');const a=h.querySelector('.sa');if(a){a.classList.remove('text-error');a.textContent='▼'}});const ci=Array.from(th.parentNode.children).indexOf(th);rows.sort((a,b)=>{const cA=a.children[ci],cB=b.children[ci],hA=cA.hasAttribute('data-sort'),hB=cB.hasAttribute('data-sort');let va=hA?cA.getAttribute('data-sort'):cA.textContent.trim(),vb=hB?cB.getAttribute('data-sort'):cB.textContent.trim();va=Number(va);vb=Number(vb);if(isNaN(va))va=cA.textContent.trim();if(isNaN(vb))vb=cB.textContent.trim();if(typeof va==='number'&&typeof vb==='number')return isAsc?vb-va:va-vb;return isAsc?String(vb).localeCompare(String(va)):String(va).localeCompare(String(vb))});th.classList.add(isAsc?'sa-desc':'sa-asc');const ar=th.querySelector('.sa');if(ar){ar.classList.add('text-error');ar.textContent=isAsc?'▼':'▲'}const total=tbody.querySelector('tr:last-child');rows.forEach(r=>tbody.appendChild(r));if(total)tbody.appendChild(total)});
 
 // ===== LOAD / RENDER =====
-function loadSystemData(){const js=document.getElementById('system-json').value.trim();if(!js){setStatus('system-status','Paste JSON','error');return}try{globalSystemFlat=parseSystemJSON(js);populateFilters();renderTreemapView();const _unique=globalSystemFlat.length;const _total=globalSystemFlat.reduce((s,x)=>s+1+(x.replica||0),0);setStatus('system-status',`✓ ${_unique} indexes(unique) & ${_total} Total(includes replicas)`,'success');const tb=document.getElementById('system-json-toggle');if(tb)toggleSystemTextarea(tb)}catch(e){setStatus('system-status',e.message,'error')}}
+function loadSystemData(){const js=document.getElementById('system-json').value.trim();if(!js){setStatus('system-status','Paste JSON','error');return}try{globalSystemFlat=parseSystemJSON(js);populateFilters();renderTreemapView();const _unique=globalSystemFlat.length;const _total=globalSystemFlat.reduce((s,x)=>s+1+(x.replica||0),0);setStatus('system-status',`✓ ${_unique} indexes(unique) & ${_total} Total(includes replicas)`,'success');const tb=document.getElementById('system-json-toggle');if(tb)toggleSystemTextarea(tb);estUpdateCompareCount()}catch(e){setStatus('system-status',e.message,'error')}}
 function loadStatsData(){const nodes=document.querySelectorAll('#stats-nodes .stats-node-input'),nd=[];nodes.forEach(n=>{const name=n.querySelector('.node-name').value.trim()||'Node',json=n.querySelector('.node-stats-json').value.trim();if(json)nd.push({name,json})});if(!nd.length){setStatus('stats-status','Paste JSON','error');return}try{globalStatsFlat=nd.map(n=>{const r=parseStatsNodeJSON(n.json,currentMetric);return{nodeName:n.name,indexer:r.indexer,flat:r.flat}});buildReplicaMap();populateFilters();renderStatsView();setStatus('stats-status',`✓ ${globalStatsFlat.reduce((s,n)=>s+n.flat.length,0)} indexes, ${globalStatsFlat.length} node(s)`,'success');collapseAllNodes()}catch(e){setStatus('stats-status',e.message,'error')}}
 
 // ===== SYSTEM:INDEXES TABLE =====
@@ -3470,12 +3493,18 @@ function estSetupDocIdInput(){const input=document.getElementById('est-docIdInpu
 
 function estParseIndex(sql){
   const s=sql.trim().replace(/\s+/g,' ');
-  const nameMatch=s.match(/CREATE\s+INDEX\s+(`[^`]+`|[^\s(]+)/i);
+  const nameMatch=s.match(/CREATE\s+INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?(`[^`]+`|[^\s(]+)/i);
   const indexName=nameMatch?nameMatch[1].replace(/`/g,''):'unknown';
-  const ksMatch=s.match(/ON\s+(`[^`]+`|[^\s(]+)/i);
-  const keyspace=ksMatch?ksMatch[1].replace(/`/g,''):'unknown';
+  // Parse full keyspace path: `bucket`.`scope`.`collection` or `bucket`
+  const ksMatch=s.match(/ON\s+((?:`[^`]+`\.)*`[^`]+`|[^\s(]+)/i);
+  const ksRaw=ksMatch?ksMatch[1]:'unknown';
+  const ksParts=ksRaw.replace(/`/g,'').split('.');
+  const bucket=ksParts[0]||'unknown';
+  const scope=ksParts.length>=3?ksParts[1]:'_default';
+  const collection=ksParts.length>=3?ksParts[2]:(ksParts.length===2?ksParts[1]:'_default');
+  const keyspace=bucket;
   let keyExpressions=[];
-  const onIdx=s.search(/ON\s+(`[^`]+`|[^\s(]+)\s*\(/i);
+  const onIdx=s.search(/ON\s+((?:`[^`]+`\.)*`[^`]+`|[^\s(]+)\s*\(/i);
   if(onIdx!==-1){const afterOn=s.substring(onIdx);const parenStart=afterOn.indexOf('(');if(parenStart!==-1){let depth=0,end=-1;for(let i=parenStart;i<afterOn.length;i++){if(afterOn[i]==='(')depth++;else if(afterOn[i]===')'){depth--;if(depth===0){end=i;break}}}if(end!==-1){const inner=afterOn.substring(parenStart+1,end).trim();let parts=[],d=0,cur='';for(let i=0;i<inner.length;i++){const c=inner[i];if(c==='(')d++;else if(c===')')d--;else if(c===','&&d===0){parts.push(cur.trim());cur='';continue}cur+=c}if(cur.trim())parts.push(cur.trim());keyExpressions=parts}}}
   const whereMatch=s.match(/WHERE\s+(.+?)(\s+WITH\s+|\s+USING\s+|$)/i);
   const whereClause=whereMatch?whereMatch[1].trim():null;
@@ -3489,7 +3518,7 @@ function estParseIndex(sql){
     if(simpleArrMatch)return{expr,field:simpleArrMatch[2].trim(),isArray:true,isMeta:false,arrayMode:simpleArrMatch[1].toUpperCase(),arrayVar:null,arraySubExprs:null};
     return{expr,field:expr.trim(),isArray:false,isMeta:false};
   });
-  return{indexName,keyspace,keyExpressions,resolvedFields,whereClause};
+  return{indexName,keyspace,bucket,scope,collection,keyExpressions,resolvedFields,whereClause};
 }
 
 function estCalculate(){
@@ -3757,6 +3786,7 @@ function estValidateIndex(){
   }else{
     estSetValid(ta);
   }
+  estUpdateCompareCount();
 }
 
 // ─── Estimator input tab switching ───────────────────────────────────────────
@@ -3897,6 +3927,385 @@ function estClearInfer(){
   // Reset INFER-auto-filled fields back to needs-input
   estMarkNeedsInput(document.getElementById('est-numDocsDisplay'));
   estMarkNeedsInput(document.getElementById('est-selectivity'));
+}
+
+// ─── Compare new index to existing system indexes ───────────────────────────
+
+function estNormalizeFields(keys){
+  if(!keys||!keys.length)return[];
+  return getIndexFields(keys).map(f=>f.toLowerCase()).filter(Boolean);
+}
+
+function estGetStatsForIndex(sysIdx){
+  const key=sysIdx.bucket+':'+sysIdx.scope+':'+sysIdx.collection+':'+sysIdx.name;
+  for(const node of globalStatsFlat){
+    const found=node.flat.find(s=>s.fullKey===key||s.bucket+':'+s.scope+':'+s.collection+':'+s.name===key);
+    if(found)return found;
+  }
+  return null;
+}
+
+function estFieldSimilarity(fieldsA,fieldsB){
+  if(!fieldsA.length&&!fieldsB.length)return 100;
+  if(!fieldsA.length||!fieldsB.length)return 0;
+  const setA=new Set(fieldsA),setB=new Set(fieldsB);
+  const intersection=[...setA].filter(f=>setB.has(f)).length;
+  const union=new Set([...setA,...setB]).size;
+  return union>0?Math.round((intersection/union)*100):0;
+}
+
+function estFieldOrderSimilarity(fieldsA,fieldsB){
+  if(!fieldsA.length||!fieldsB.length)return 0;
+  const minLen=Math.min(fieldsA.length,fieldsB.length);
+  let matchCount=0;
+  for(let i=0;i<minLen;i++){
+    if(fieldsA[i]===fieldsB[i])matchCount++;
+  }
+  return Math.round((matchCount/Math.max(fieldsA.length,fieldsB.length))*100);
+}
+
+function estUpdateCompareCount(){
+  const badge=document.getElementById('est-compare-count');
+  if(!badge)return;
+  if(!globalSystemFlat.length){badge.classList.add('hidden');return}
+  const indexSql=document.getElementById('est-indexInput').value.trim();
+  if(!indexSql){badge.classList.add('hidden');return}
+  try{
+    const parsed=estParseIndex(indexSql);
+    if(!parsed.resolvedFields.length){badge.classList.add('hidden');return}
+    const newFields=estNormalizeFields(parsed.keyExpressions);
+    const newFieldsSet=new Set(newFields);
+    const newBucket=parsed.bucket.toLowerCase();
+    const newScope=parsed.scope.toLowerCase();
+    const newCollection=parsed.collection.toLowerCase();
+    let count=0;
+    globalSystemFlat.forEach(sysIdx=>{
+      const existFields=estNormalizeFields(sysIdx.keys);
+      const existFieldsSet=new Set(existFields);
+      const sameTarget=newBucket===(sysIdx.bucket||'').toLowerCase()&&newScope===(sysIdx.scope||'_default').toLowerCase()&&newCollection===(sysIdx.collection||'_default').toLowerCase();
+      if(!sameTarget)return;
+      const sameFieldsAndOrder=newFields.length===existFields.length&&newFields.every((f,i)=>f===existFields[i]);
+      if(sameFieldsAndOrder){count++;return}
+      if(newFields.length>0&&existFields.length>0&&[...existFieldsSet].every(f=>newFieldsSet.has(f))&&newFields.length>existFields.length){count++;return}
+      if(newFields.length>0&&existFields.length>0&&[...newFieldsSet].every(f=>existFieldsSet.has(f))&&existFields.length>newFields.length){count++;return}
+      if(estFieldSimilarity(newFields,existFields)>=30)count++;
+    });
+    badge.textContent=count;
+    badge.classList.toggle('hidden',count===0);
+  }catch(e){badge.classList.add('hidden')}
+}
+
+function estCompareToExisting(){
+  if(!globalSystemFlat.length){
+    estShowError('No system indexes loaded. Please load data in the System Indexes tab first.');
+    return;
+  }
+  const indexSql=document.getElementById('est-indexInput').value.trim();
+  if(!indexSql){estShowError('Please enter a CREATE INDEX statement first.');return}
+  const parsed=estParseIndex(indexSql);
+  if(!parsed.resolvedFields.length){estShowError('Could not parse index key expressions.');return}
+
+  const newFields=estNormalizeFields(parsed.keyExpressions);
+  const newFieldsSet=new Set(newFields);
+  const newWhere=(parsed.whereClause||'').replace(/\s+/g,' ').trim().toLowerCase();
+  const newBucket=parsed.bucket.toLowerCase();
+  const newScope=parsed.scope.toLowerCase();
+  const newCollection=parsed.collection.toLowerCase();
+
+  const results=[];
+
+  globalSystemFlat.forEach(sysIdx=>{
+    const existFields=estNormalizeFields(sysIdx.keys);
+    const existFieldsSet=new Set(existFields);
+    const existWhere=(sysIdx.condition||'').replace(/\s+/g,' ').trim().toLowerCase();
+    const existBucket=(sysIdx.bucket||'').toLowerCase();
+    const existScope=(sysIdx.scope||'_default').toLowerCase();
+    const existCollection=(sysIdx.collection||'_default').toLowerCase();
+
+    const fieldSimilarity=estFieldSimilarity(newFields,existFields);
+    const orderSimilarity=estFieldOrderSimilarity(newFields,existFields);
+
+    // Classify relationship using shared pure function
+    const cls=estClassifyRelationship(newFields,newWhere,newBucket,newScope,newCollection,
+      existFields,existWhere,existBucket,existScope,existCollection);
+    if(cls.relationship==='none')return;
+
+    const relationship=cls.relationship;
+    const desc=cls.desc;
+    let badge='';
+    if(relationship==='exact')badge='<span class="badge badge-error font-bold">EXACT DUPLICATE</span>';
+    else if(relationship==='same-fields')badge='<span class="badge badge-warning font-bold">SAME FIELDS</span>';
+    else if(relationship==='replaces')badge='<span class="badge badge-info font-bold">POSSIBLE REPLACE ↑</span>';
+    else if(relationship==='covered-by')badge='<span class="badge badge-success font-bold">ALREADY COVERED ↓</span>';
+    else if(relationship==='similar')badge='<span class="badge badge-ghost font-bold">SIMILAR ('+fieldSimilarity+'%)</span>';
+
+    const stats=estGetStatsForIndex(sysIdx);
+    results.push({sysIdx,stats,relationship,badge,desc,fieldSimilarity,orderSimilarity});
+  });
+
+  // Sort: exact first, then replaces, covered-by, same-fields, then by similarity desc
+  const order={exact:0,'same-fields':1,replaces:2,'covered-by':3,similar:4};
+  results.sort((a,b)=>(order[a.relationship]??9)-(order[b.relationship]??9)||b.fieldSimilarity-a.fieldSimilarity);
+
+  // Stash results globally so filter/slider can re-render
+  window._estCompareResults=results;
+  window._estCompareNewFields=newFields;
+  window._estCompareParsed=parsed;
+  window._estCompareFilter='all';
+  window._estCompareMinSim=0;
+
+  estRenderCompareOverlay();
+}
+
+function estHighlightSql(sql,matchFields){
+  if(!matchFields||!matchFields.size)return sql.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const escaped=sql.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const pattern=[...matchFields].sort((a,b)=>b.length-a.length).map(f=>f.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('|');
+  const re=new RegExp('(`?)('+pattern+')(`?)','gi');
+  return escaped.replace(re,(m,pre,field,post)=>pre+'<span style="background:#fef08a;border-radius:2px;padding:0 2px;font-weight:700">'+field+'</span>'+post);
+}
+
+function estRenderCompareOverlay(){
+  const results=window._estCompareResults||[];
+  const newFields=window._estCompareNewFields||[];
+  const parsed=window._estCompareParsed||{};
+  const activeFilter=window._estCompareFilter||'all';
+  const minSim=window._estCompareMinSim||0;
+  const newFieldsSet=new Set(newFields);
+
+  // Apply filters
+  const filtered=results.filter(r=>{
+    if(activeFilter!=='all'&&r.relationship!==activeFilter)return false;
+    if(r.fieldSimilarity<minSim)return false;
+    return true;
+  });
+
+  // Counts (unfiltered for stat badges)
+  const exactCount=results.filter(r=>r.relationship==='exact').length;
+  const sameFieldsCount=results.filter(r=>r.relationship==='same-fields').length;
+  const replacesCount=results.filter(r=>r.relationship==='replaces').length;
+  const coveredCount=results.filter(r=>r.relationship==='covered-by').length;
+  const similarCount=results.filter(r=>r.relationship==='similar').length;
+
+  const body=document.getElementById('est-compare-body');
+  let html='';
+
+  // New index summary card
+  html+=`<div class="card bg-base-100 shadow-sm mb-6"><div class="card-body p-4">
+    <h3 class="font-bold text-sm uppercase tracking-wider text-base-content/70 mb-2">New Index</h3>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
+      <div><span class="text-base-content/60 text-xs font-semibold">Name</span><br/><code class="text-error font-bold">${parsed.indexName}</code></div>
+      <div><span class="text-base-content/60 text-xs font-semibold">Bucket.Scope.Collection</span><br/><code class="text-base-content font-semibold">${parsed.bucket}.${parsed.scope}.${parsed.collection}</code></div>
+      <div><span class="text-base-content/60 text-xs font-semibold">WHERE</span><br/><code class="text-base-content font-semibold">${parsed.whereClause||'—'}</code></div>
+    </div>
+    <div class="mt-2"><span class="text-base-content/60 text-xs font-semibold">Fields</span><br/>${newFields.map(f=>'<kbd class="kbd kbd-sm mr-1 mb-1 font-bold text-base-content">'+f+'</kbd>').join('')||'<span class="text-base-content/50">(none)</span>'}</div>
+    <div class="mt-3 p-3 bg-base-200 rounded-lg"><span class="text-[10px] text-base-content/60 uppercase font-bold">SQL++ CREATE INDEX</span><br/><code class="text-sm text-base-content font-semibold break-all">${document.getElementById('est-indexInput').value.trim().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</code></div>
+  </div></div>`;
+
+  // Clickable stat filter bar
+  function statBtn(label,count,filterKey,colorCls,activeColor){
+    const isActive=activeFilter===filterKey;
+    const ring=isActive?'ring-2 ring-offset-1 '+activeColor:'';
+    return`<div class="stat py-3 px-4 cursor-pointer hover:bg-base-200 transition-colors ${ring}" onclick="estCompareSetFilter('${filterKey}')"><div class="stat-title text-[11px] font-semibold text-base-content/70">${label}</div><div class="stat-value text-lg ${count?colorCls:'text-base-content'}">${count}</div></div>`;
+  }
+  html+=`<div class="stats stats-horizontal shadow-sm w-full mb-4 flex-wrap">
+    ${statBtn('All',''+results.length,'all','text-base-content','ring-base-content')}
+    ${statBtn('Exact Duplicates',exactCount,'exact',exactCount?'text-error':'text-success','ring-error')}
+    ${statBtn('Same Fields',sameFieldsCount,'same-fields',sameFieldsCount?'text-warning':'','ring-warning')}
+    ${statBtn('Possible Replace',replacesCount,'replaces',replacesCount?'text-info':'','ring-info')}
+    ${statBtn('Already Covered',coveredCount,'covered-by',coveredCount?'text-success':'','ring-success')}
+    ${statBtn('Similar',similarCount,'similar','','ring-base-content')}
+  </div>`;
+
+  // Similarity slider
+  html+=`<div class="flex items-center gap-3 mb-6 bg-base-100 rounded-lg p-3 shadow-sm">
+    <span class="text-sm font-bold text-base-content/80 whitespace-nowrap">Min Similarity:</span>
+    <input type="range" min="0" max="100" step="5" value="${minSim}" class="range range-sm range-info flex-1" oninput="estCompareSetMinSim(this.value)" />
+    <span class="badge badge-lg font-mono font-bold min-w-[4rem] text-center" id="est-compare-sim-label">${minSim}%</span>
+    <span class="text-xs text-base-content/60">Showing <b>${filtered.length}</b> of ${results.length}</span>
+  </div>`;
+
+  if(!filtered.length){
+    html+=`<div class="alert bg-success/10 border border-success/30 text-base-content shadow-sm">
+      <div><p class="font-semibold text-base-content">No matches found</p><p class="text-sm text-base-content/80">${results.length?'No results match the current filter. Try lowering the similarity threshold or selecting a different category.':'This index does not overlap with any existing indexes. It appears to be a truly new index.'}</p></div>
+    </div>`;
+  }else{
+    html+=`<div class="space-y-4">`;
+    filtered.forEach((r,rIdx)=>{
+      const s=r.stats;
+      const idx=r.sysIdx;
+      const existFields=estNormalizeFields(idx.keys);
+      const createStmt=buildCreateIndex(idx);
+
+      let statsHtml='<span class="text-base-content/50 text-xs italic">No stats available — load Stats API data for sizing info</span>';
+      if(s){
+        statsHtml=`<div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2 text-xs mt-2">
+          <div class="bg-base-200 rounded px-2 py-1"><div class="text-[10px] text-base-content/60 font-semibold">Disk Size</div><div class="font-mono font-bold text-base-content">${fmt(s.disk_size)}</div></div>
+          <div class="bg-base-200 rounded px-2 py-1"><div class="text-[10px] text-base-content/60 font-semibold">Data Size</div><div class="font-mono font-bold text-base-content">${fmt(s.data_size)}</div></div>
+          <div class="bg-base-200 rounded px-2 py-1"><div class="text-[10px] text-base-content/60 font-semibold">Memory</div><div class="font-mono font-bold text-base-content">${fmt(s.memory_used)}</div></div>
+          <div class="bg-base-200 rounded px-2 py-1"><div class="text-[10px] text-base-content/60 font-semibold">Resident %</div><div class="font-mono font-bold text-base-content">${s.resident_percent!=null?s.resident_percent+'%':'—'}</div></div>
+          <div class="bg-base-200 rounded px-2 py-1"><div class="text-[10px] text-base-content/60 font-semibold">Items</div><div class="font-mono font-bold text-base-content">${fmtN(s.items_count)}</div></div>
+          <div class="bg-base-200 rounded px-2 py-1"><div class="text-[10px] text-base-content/60 font-semibold">Requests</div><div class="font-mono font-bold text-base-content">${fmtN(s.num_requests)}</div></div>
+          <div class="bg-base-200 rounded px-2 py-1"><div class="text-[10px] text-base-content/60 font-semibold">Avg Latency</div><div class="font-mono font-bold text-base-content">${fmtNs(s.avg_scan_latency)}</div></div>
+          <div class="bg-base-200 rounded px-2 py-1"><div class="text-[10px] text-base-content/60 font-semibold">Last Scan</div><div class="font-mono font-bold text-base-content">${fmtTimeAgo(s.last_known_scan_time)}</div></div>
+        </div>`;
+      }
+
+      // Field comparison visual — yellow highlight for matches
+      const existFieldsSet=new Set(existFields);
+      const fieldCompare=`<div class="flex flex-wrap gap-1 mt-1">${existFields.map(f=>{
+        const inNew=newFieldsSet.has(f);
+        return'<kbd class="kbd kbd-xs font-bold '+(inNew?'text-base-content':'text-base-content/60')+'" style="'+(inNew?'background:#fef08a;border-color:#eab308;':'')+'">'+f+'</kbd>';
+      }).join('')}</div>`;
+
+      const detailId='est-compare-detail-'+rIdx;
+      html+=`<div class="card bg-base-100 shadow-sm border-l-4 ${r.relationship==='exact'?'border-l-error':r.relationship==='same-fields'?'border-l-warning':r.relationship==='replaces'?'border-l-info':r.relationship==='covered-by'?'border-l-success':'border-l-base-300'}">
+        <div class="card-body p-4">
+          <div class="flex items-start justify-between gap-2">
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="badge badge-neutral badge-lg font-mono font-bold text-white">#${rIdx+1}</span>
+                ${r.badge}
+                <span class="font-bold text-base-content text-base">${idx.name}</span>
+                ${primaryBadge(idx)}
+                <span class="badge badge-ghost badge-sm text-base-content/70 font-semibold">${idx.bucket}.${idx.scope}.${idx.collection}</span>
+              </div>
+              <code class="text-xs text-base-content/70 mt-1 block" style="word-break:break-word;overflow-wrap:break-word">${estHighlightSql(createStmt,newFieldsSet)}</code>
+              ${s?`<div class="flex gap-3 mt-1 text-xs text-base-content/60"><span>Data: <b class="text-base-content">${fmt(s.data_size)}</b></span><span>Items: <b class="text-base-content">${fmtN(s.items_count)}</b></span></div>`:''}
+            </div>
+            <div class="flex items-center gap-3 text-xs shrink-0">
+              <button class="btn btn-xs btn-ghost gap-1 text-base-content/60" onclick="var d=document.getElementById('${detailId}');var open=!d.classList.contains('hidden');d.classList.toggle('hidden');this.querySelector('.est-toggle-arrow').textContent=open?'▶':'▼';this.querySelector('.est-toggle-label').textContent=open?'Show Details':'Hide Details'">
+                <span class="est-toggle-arrow">▶</span><span class="est-toggle-label">Show Details</span>
+              </button>
+              <div class="tooltip tooltip-left" data-tip="Field overlap: ${r.fieldSimilarity}% of combined unique fields are shared between both indexes">
+                <div class="radial-progress text-info font-bold text-[11px] cursor-help" style="--value:${r.fieldSimilarity};--size:2.8rem;--thickness:3px" role="progressbar">${r.fieldSimilarity}%</div>
+                <div class="text-[9px] text-center text-base-content/60 font-semibold">Fields</div>
+              </div>
+              <div class="tooltip tooltip-left" data-tip="Positional match: ${r.orderSimilarity}% of fields are in the same position (important for query covering)">
+                <div class="radial-progress text-warning font-bold text-[11px] cursor-help" style="--value:${r.orderSimilarity};--size:2.8rem;--thickness:3px" role="progressbar">${r.orderSimilarity}%</div>
+                <div class="text-[9px] text-center text-base-content/60 font-semibold">Order</div>
+              </div>
+            </div>
+          </div>
+          <div id="${detailId}" class="hidden">
+            <p class="text-sm text-base-content/80 mt-2">${r.desc}</p>
+            <div class="mt-2">
+              <span class="text-[10px] text-base-content/60 uppercase font-bold">Existing Fields</span>
+              ${fieldCompare}
+            </div>
+            ${idx.condition?'<div class="mt-1"><span class="text-[10px] text-base-content/60 uppercase font-bold">WHERE</span><br/><code class="text-sm text-base-content">'+estHighlightSql(idx.condition,newFieldsSet)+'</code></div>':''}
+            ${statsHtml}
+          </div>
+        </div>
+      </div>`;
+    });
+    html+=`</div>`;
+  }
+
+  body.innerHTML=html;
+  const overlay=document.getElementById('est-compare-overlay');
+  overlay.classList.remove('hidden');
+  overlay.focus();
+  overlay.scrollTop=overlay.scrollTop||0;
+}
+
+function estCompareSetFilter(filterKey){
+  window._estCompareFilter=filterKey;
+  const overlay=document.getElementById('est-compare-overlay');
+  const scrollPos=overlay.scrollTop;
+  estRenderCompareOverlay();
+  overlay.scrollTop=scrollPos;
+}
+
+function estCompareToggleAll(){
+  const details=document.querySelectorAll('[id^="est-compare-detail-"]');
+  const anyHidden=Array.from(details).some(d=>d.classList.contains('hidden'));
+  details.forEach(d=>{anyHidden?d.classList.remove('hidden'):d.classList.add('hidden')});
+  document.querySelectorAll('.est-toggle-arrow').forEach(a=>{a.textContent=anyHidden?'▼':'▶'});
+  document.querySelectorAll('.est-toggle-label').forEach(l=>{l.textContent=anyHidden?'Hide Details':'Show Details'});
+  const globalLabel=document.getElementById('est-compare-toggle-all-label');
+  if(globalLabel)globalLabel.textContent=anyHidden?'Hide All Details':'Show All Details';
+}
+
+function estCompareSetMinSim(val){
+  window._estCompareMinSim=parseInt(val)||0;
+  const overlay=document.getElementById('est-compare-overlay');
+  const scrollPos=overlay.scrollTop;
+  estRenderCompareOverlay();
+  overlay.scrollTop=scrollPos;
+}
+
+function estCompareCopyJson(btn){
+  const results=window._estCompareResults||[];
+  const newFields=window._estCompareNewFields||[];
+  const parsed=window._estCompareParsed||{};
+  const indexSql=document.getElementById('est-indexInput').value.trim();
+
+  const json={
+    generated:new Date().toISOString(),
+    newIndex:{
+      name:parsed.indexName||'unknown',
+      bucket:parsed.bucket||'unknown',
+      scope:parsed.scope||'_default',
+      collection:parsed.collection||'_default',
+      fields:newFields,
+      whereClause:parsed.whereClause||null,
+      createStatement:indexSql
+    },
+    summary:{
+      totalSystemIndexes:globalSystemFlat.length,
+      exactDuplicates:results.filter(r=>r.relationship==='exact').length,
+      sameFields:results.filter(r=>r.relationship==='same-fields').length,
+      possibleReplace:results.filter(r=>r.relationship==='replaces').length,
+      alreadyCovered:results.filter(r=>r.relationship==='covered-by').length,
+      similar:results.filter(r=>r.relationship==='similar').length
+    },
+    comparisons:results.map(r=>{
+      const idx=r.sysIdx;
+      const s=r.stats;
+      const entry={
+        relationship:r.relationship,
+        fieldSimilarityPct:r.fieldSimilarity,
+        orderSimilarityPct:r.orderSimilarity,
+        existingIndex:{
+          name:idx.name,
+          bucket:idx.bucket,
+          scope:idx.scope,
+          collection:idx.collection,
+          fields:estNormalizeFields(idx.keys),
+          keys:idx.keys||[],
+          whereClause:idx.condition||null,
+          isPrimary:!!idx.isPrimary,
+          replicas:idx.replica||0,
+          createStatement:buildCreateIndex(idx)
+        }
+      };
+      if(s){
+        const scanNs=s.last_known_scan_time||0;
+        let scanIso='never';
+        if(scanNs>0){try{const d=new Date(scanNs/1e6);if(!isNaN(d.getTime()))scanIso=d.toISOString()}catch{}}
+        entry.stats={
+          diskSize:estFormatBytes(s.disk_size||0),
+          dataSize:estFormatBytes(s.data_size||0),
+          memoryUsed:estFormatBytes(s.memory_used||0),
+          residentPercent:s.resident_percent!=null?s.resident_percent+'%':null,
+          itemsCount:s.items_count||0,
+          numRequests:s.num_requests||0,
+          avgScanLatency:fmtNs(s.avg_scan_latency||0),
+          lastKnownScanTime:scanIso
+        };
+      }
+      return entry;
+    })
+  };
+
+  navigator.clipboard.writeText(JSON.stringify(json,null,2)).then(()=>{
+    const orig=btn.innerHTML;
+    btn.innerHTML='Copied!';
+    btn.classList.remove('btn-outline','btn-info');
+    btn.classList.add('btn-success','text-white');
+    setTimeout(()=>{btn.innerHTML=orig;btn.classList.remove('btn-success','text-white');btn.classList.add('btn-outline','btn-info')},2000);
+  });
 }
 
 // Init estimator when tab is first shown

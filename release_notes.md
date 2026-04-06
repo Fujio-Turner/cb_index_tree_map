@@ -1,5 +1,37 @@
 # Release Notes
 
+## v2.5.2 (2026-04-06)
+
+### Improvements
+
+- **Smarter Index Comparison Scoring** — The "Compare to Existing" overlay now accounts for WHERE clause differences when classifying relationships. An existing index with a WHERE clause (narrower data subset) can no longer be classified as "POSSIBLE REPLACE" for a new index without a WHERE clause. Mismatched WHERE indexes are now correctly classified as "SIMILAR" with a note explaining the data scope difference.
+
+- **Same Fields / Different Order Detection** — Indexes with identical fields but in a different key order are now classified as **SAME FIELDS** (previously shown as "SIMILAR 100%") and sorted near the top of results. The description notes that field order affects query covering and performance.
+
+- **Exact Duplicate Sort Fix** — Fixed a bug where EXACT DUPLICATE indexes were sorted to the bottom instead of the top. Caused by JavaScript `||` treating `0` as falsy in the sort comparator; replaced with `??` (nullish coalescing).
+
+- **Comparison Overlay Hide/Show Details** — Each existing index card in the comparison overlay now has a collapsible details section. The collapsed view shows the SQL++ CREATE INDEX statement (with matching field highlighting), data size, and item count. A "Show Details" toggle reveals full stats, field list, and WHERE clause. A global "Show All Details / Hide All Details" button controls all cards at once.
+
+- **Extracted `estClassifyRelationship` to `lib/pure.js`** — The index relationship classification logic is now a standalone testable function, shared between the UI and unit tests.
+
+### UI Cleanup
+
+- Removed all emoji and SVG icons from the comparison overlay for a cleaner look.
+- Changed collapsed stats label from "Disk" to "Data" (uses `data_size` instead of `disk_size`) since MOI indexes don't have disk.
+- SQL++ CREATE INDEX in collapsed view now word-wraps properly, keeping the "Show Details" button and similarity gauges pinned to the right.
+
+### Tests
+
+- Added 22 new unit tests for `estClassifyRelationship` covering: exact duplicates, same-fields (same/different order), replaces (with WHERE guard), covered-by, similar, none, WHERE mismatch behavior, scope/collection matching, and sort order.
+- All **395 tests pass**.
+
+### Stats
+
+- **Files changed:** 4 (`index.html`, `lib/pure.js`, `tests/estimator.test.js`, `package.json`)
+- Updated version badge to v2.5.2.
+
+---
+
 ## v2.5.1 (2026-04-02)
 
 ### New Features
