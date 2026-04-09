@@ -1,6 +1,6 @@
 {
   "name": "cb_index_tree_map",
-  "version": "2.5.2",
+  "version": "2.5.2-1",
   "private": true,
   "scripts": {
     "start": "node server.js",

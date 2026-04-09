@@ -1,5 +1,18 @@
 # Release Notes
 
+## v2.5.2-1 (2026-04-09)
+
+### Bug Fix
+
+- **`estClassifyRelationship is not defined` runtime error** — The `estClassifyRelationship` function was added to `lib/pure.js` (Node.js / Jest) but not to `index.html` (browser). Clicking "Compare to Existing" threw a `ReferenceError` and failed to render results. Fixed by adding the browser-side copy of the function in `index.html` alongside the other duplicated estimator functions.
+
+### Stats
+
+- **Files changed:** 4 (`index.html`, `package.json`, `README.md`, `release_notes.md`)
+- Updated version badge to v2.5.2-1.
+
+---
+
 ## v2.5.2 (2026-04-06)
 
 ### Improvements
