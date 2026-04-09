@@ -33,7 +33,7 @@
   <div class="flex-1 gap-3">
     <span class="text-xl font-bold text-error">CB Index Treemap</span>
     <span class="text-xs text-base-content/50 hidden sm:inline">Visualize & analyze GSI index sizes, performance & capacity</span>
-    <span class="badge badge-ghost badge-sm text-[10px]">v2.5.2</span>
+    <span class="badge badge-ghost badge-sm text-[10px]">v2.5.2-1</span>
   </div>
   <div class="flex-none">
     <button class="btn btn-ghost btn-sm gap-1" onclick="openFileManager()"><span id="saved-count" class="badge badge-sm badge-ghost">0</span></button>
@@ -3962,6 +3962,28 @@ function estFieldOrderSimilarity(fieldsA,fieldsB){
     if(fieldsA[i]===fieldsB[i])matchCount++;
   }
   return Math.round((matchCount/Math.max(fieldsA.length,fieldsB.length))*100);
+}
+
+function estClassifyRelationship(newFields,newWhere,newBucket,newScope,newCollection,existFields,existWhere,existBucket,existScope,existCollection){
+  const newFieldsSet=new Set(newFields),existFieldsSet=new Set(existFields);
+  const fieldSimilarity=estFieldSimilarity(newFields,existFields);
+  const sameFieldsAndOrder=newFields.length===existFields.length&&newFields.every((f,i)=>f===existFields[i]);
+  const sameFieldsAnyOrder=newFields.length===existFields.length&&newFields.length>0&&[...newFieldsSet].every(f=>existFieldsSet.has(f))&&[...existFieldsSet].every(f=>newFieldsSet.has(f));
+  const nw=(newWhere||'').replace(/\s+/g,' ').trim().toLowerCase();
+  const ew=(existWhere||'').replace(/\s+/g,' ').trim().toLowerCase();
+  const sameWhere=nw===ew;
+  const sameTarget=(newBucket||'').toLowerCase()===(existBucket||'').toLowerCase()&&(newScope||'_default').toLowerCase()===(existScope||'_default').toLowerCase()&&(newCollection||'_default').toLowerCase()===(existCollection||'_default').toLowerCase();
+  const existHasWhere=ew.length>0,newHasWhere=nw.length>0;
+  const whereMismatch=existHasWhere!==newHasWhere;
+  const whereNote=whereMismatch?(existHasWhere?' Note: existing index has a WHERE clause (narrower subset of data).':' Note: new index has a WHERE clause (narrower subset of data).'):'';
+  if(sameFieldsAndOrder&&sameWhere&&sameTarget)return{relationship:'exact',desc:'Identical index already exists — same fields, same order, same WHERE clause, same bucket.scope.collection.'};
+  if(sameFieldsAndOrder&&sameTarget&&!whereMismatch)return{relationship:'same-fields',desc:'Same fields in same order but different WHERE clause.'};
+  if(sameFieldsAnyOrder&&sameWhere&&sameTarget)return{relationship:'same-fields',desc:'Same fields but in different order. Field order affects query covering and performance.'};
+  if(sameFieldsAnyOrder&&sameTarget&&!whereMismatch)return{relationship:'same-fields',desc:'Same fields but different order and different WHERE clause.'};
+  if(newFields.length>0&&existFields.length>0&&[...existFieldsSet].every(f=>newFieldsSet.has(f))&&newFields.length>existFields.length&&sameTarget&&!existHasWhere){const extra=newFields.filter(f=>!existFieldsSet.has(f));return{relationship:'replaces',desc:'New index is a superset — covers all fields of existing index plus: '+extra.join(', ')+'. The existing index could potentially be dropped.'};}
+  if(newFields.length>0&&existFields.length>0&&[...newFieldsSet].every(f=>existFieldsSet.has(f))&&existFields.length>newFields.length&&sameTarget&&(sameWhere||(!newHasWhere&&existHasWhere)))return{relationship:'covered-by',desc:'Existing index already covers all fields of the new index.'+(existHasWhere&&!newHasWhere?'':' The new index may be unnecessary.')+whereNote};
+  if(fieldSimilarity>=30&&sameTarget){const overlap=newFields.filter(f=>existFieldsSet.has(f));const onlyNew=newFields.filter(f=>!existFieldsSet.has(f));const onlyExist=existFields.filter(f=>!newFieldsSet.has(f));return{relationship:'similar',desc:'Field overlap: '+overlap.join(', ')+(onlyNew.length?' | Only in new: '+onlyNew.join(', '):'')+(onlyExist.length?' | Only in existing: '+onlyExist.join(', '):'')+whereNote};}
+  return{relationship:'none',desc:''};
 }
 
 function estUpdateCompareCount(){
