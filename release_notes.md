@@ -1,5 +1,27 @@
 # Release Notes
 
+## v2.6.2 (2026-04-14)
+
+### New Features
+
+- **🔍 Duplicate Index Finder Tab** — A new top-level tab that analyzes your `system:indexes` data to find duplicate, overlapping, and similar GSI indexes within the same bucket.scope.collection. Features include:
+  - **Interactive Similarity Graph** — Force-directed network visualization where nodes represent indexes and edges represent relationships. Node size scales with connection degree; edges are color-coded by relationship type (red = Exact Duplicate, orange = Same Fields, blue = Replaces/Covered-by, gray = Similar).
+  - **Automatic Relationship Classification** — Index pairs are classified as Exact Duplicate, Same Fields (same fields in different order), Replaces / Covered-by, or Similar based on field overlap analysis.
+  - **Never-Scanned Highlighting** — Indexes that have never been scanned appear as faded nodes with dashed outlines, making cleanup candidates immediately visible in the graph.
+  - **Collection Color-Coding** — Nodes are colored by their target collection for quick visual grouping across the graph.
+  - **Adjustable Similarity Threshold** — Slider control to set minimum similarity percentage (0–100%) for filtering relationships.
+  - **Category Filters** — Click stat cards to filter the graph by relationship type (All, Exact Duplicates, Same Fields, Replaces/Covered-by, Similar).
+  - **Hide Isolated Toggle** — Option to hide indexes with no relationships, focusing the view on problematic clusters.
+  - **Detail Panel** — Click any node or edge in the graph to see full index details, field lists, WHERE clauses, and relationship descriptions.
+  - **Respects Global Filters** — The Duplicate Index Finder uses the global Bucket, Scope, Collection, and Field filters from the filter bar.
+
+### Stats
+
+- **Files changed:** 4 (`index.html`, `package.json`, `README.md`, `release_notes.md`)
+- Updated version badge to v2.6.2.
+
+---
+
 ## v2.5.2-1 (2026-04-09)
 
 ### Bug Fix

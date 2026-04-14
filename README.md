@@ -68,6 +68,16 @@ Both plans show you a **before → after Lumpiness Score comparison**, a detaile
 - **Top 10 / Bottom 10 leaderboards** — largest disk, highest fragmentation, lowest cache hit, highest bloat, most requests, and more
 - **⚠️ Never-scanned indexes list** — indexes burning disk but never queried. Prime candidates for cleanup!
 
+### 🔍 Duplicate Index Finder Tab
+- **Interactive similarity graph** — Force-directed network graph visualizing relationships between indexes in the same bucket.scope.collection. Node size reflects connection degree; edges are color-coded by relationship type.
+- **Relationship detection** — Automatically classifies index pairs as **Exact Duplicate**, **Same Fields** (same fields, different order), **Replaces / Covered-by**, or **Similar** (with configurable similarity threshold).
+- **Never-scanned highlighting** — Indexes that have never been scanned appear as faded nodes with dashed outlines, making cleanup candidates immediately visible.
+- **Collection color-coding** — Nodes are colored by their target collection for quick visual grouping.
+- **Filterable & interactive** — Click any node or edge to see full details; filter by relationship type, adjust minimum similarity threshold, and toggle isolated indexes on/off.
+
+![Duplicate Index Finder Screenshot 1](img/dup_finder_1.png)
+![Duplicate Index Finder Screenshot 2](img/dup_finder_2.png)
+
 ### 💃 Index Placement Optimizer Tab *(Beta)*
 - **Plan A: Built-in Rebalance** — Greedy algorithm computes an optimized placement and generates `ALTER INDEX` statements
 - **Plan B: AI-Assisted Rebalance** — Export topology with obfuscated hashes + TOON token optimization, send to any AI, import the result back. The tool de-hashes, scores, and generates ALTER INDEX statements.
@@ -223,7 +233,7 @@ docker compose up --build    # rebuild after updating index.html
 
 ## 📦 Current Release
 
-**v2.5.2-1** — See [release notes](release_notes.md) for details.
+**v2.6.2** — See [release notes](release_notes.md) for details.
 
 ---
 
