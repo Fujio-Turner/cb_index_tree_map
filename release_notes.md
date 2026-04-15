@@ -1,6 +1,19 @@
 # Release Notes
 
-## v2.6.2 (2026-04-14)
+## v2.6.1 (2026-04-14)
+
+### New Features
+
+- **Copy JSON / Copy CSV buttons on Duplicate Index Finder table** — The "All Relationships" table now has **Copy JSON** and **Copy CSV** buttons that copy the full table data to clipboard. The exported data includes all visible columns plus hidden columns: **Last Scan A**, **Last Scan B**, **Definition A** (SQL++ CREATE INDEX for Index A), and **Definition B** (SQL++ CREATE INDEX for Index B).
+
+### Stats
+
+- **Files changed:** 4 (`index.html`, `package.json`, `README.md`, `release_notes.md`)
+- Updated version badge to v2.6.1.
+
+---
+
+## v2.6.0 (2026-04-14)
 
 ### New Features
 
@@ -18,7 +31,7 @@
 ### Stats
 
 - **Files changed:** 4 (`index.html`, `package.json`, `README.md`, `release_notes.md`)
-- Updated version badge to v2.6.2.
+- Updated version badge to v2.6.0.
 
 ---
 
