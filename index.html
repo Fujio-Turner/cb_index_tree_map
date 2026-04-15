@@ -33,7 +33,7 @@
   <div class="flex-1 gap-3">
     <span class="text-xl font-bold text-error">CB Index Treemap</span>
     <span class="text-xs text-base-content/50 hidden sm:inline">Visualize & analyze GSI index sizes, performance & capacity</span>
-    <span class="badge badge-ghost badge-sm text-[10px]">v2.6.2</span>
+    <span class="badge badge-ghost badge-sm text-[10px]">v2.6.1</span>
   </div>
   <div class="flex-none">
     <button class="btn btn-ghost btn-sm gap-1" onclick="openFileManager()"><span id="saved-count" class="badge badge-sm badge-ghost">0</span></button>
@@ -4511,13 +4511,31 @@ function renderDuplicateFinder(){
     </div></div>
   </div>`;
 
+  const sortOrder={exact:0,'same-fields':1,'replaces-covered-by':2,similar:3};
+  const sortedEdges=[...graphEdges].sort((a,b)=>(sortOrder[a._rel.type]??9)-(sortOrder[b._rel.type]??9)||b._rel.fieldSimilarity-a._rel.fieldSimilarity);
+
+  // Build table data array for copy functions (includes hidden columns)
+  window._dupTableData=sortedEdges.map(e=>{
+    const r=e._rel;
+    const srcIdx=prepared.find(p=>p._id===r.source);
+    const tgtIdx=prepared.find(p=>p._id===r.target);
+    const srcScan=srcIdx&&srcIdx._stats?srcIdx._stats.last_known_scan_time:(srcIdx?srcIdx.last_known_scan_time||0:0);
+    const tgtScan=tgtIdx&&tgtIdx._stats?tgtIdx._stats.last_known_scan_time:(tgtIdx?tgtIdx.last_known_scan_time||0:0);
+    return{type:DUP_EDGE_LABELS[r.type]||r.type,indexA:srcIdx?srcIdx.name:r.source,indexB:tgtIdx?tgtIdx.name:r.target,collection:srcIdx?srcIdx.bucket+'.'+srcIdx.scope+'.'+srcIdx.collection:'',fieldSimilarity:r.fieldSimilarity,orderSimilarity:r.orderSimilarity,description:r.desc,lastScanA:fmtTimeAgo(srcScan),lastScanB:fmtTimeAgo(tgtScan),definitionA:srcIdx?srcIdx._create:'',definitionB:tgtIdx?tgtIdx._create:''};
+  });
+
   html+=`<div class="card bg-base-100 shadow-sm mt-4"><div class="card-body p-3">
-    <div class="flex items-center justify-between mb-2"><h3 class="font-bold text-sm">All Relationships</h3><div class="badge badge-ghost">${graphEdges.length} relationships</div></div>
+    <div class="flex items-center justify-between mb-2">
+      <h3 class="font-bold text-sm">All Relationships</h3>
+      <div class="flex items-center gap-2">
+        <button class="btn btn-xs btn-outline btn-info" onclick="dupCopyTableJSON(this)" title="Copy table data as JSON (includes index definitions)">Copy JSON</button>
+        <button class="btn btn-xs btn-outline btn-warning" onclick="dupCopyTableCSV(this)" title="Copy table data as CSV (includes index definitions)">Copy CSV</button>
+        <div class="badge badge-ghost">${graphEdges.length} relationships</div>
+      </div>
+    </div>
     <div class="overflow-x-auto max-h-[400px] overflow-y-auto"><table class="table table-xs table-pin-rows"><thead><tr class="bg-base-200">
       <th>Type</th><th>Index A</th><th>Index B</th><th>Collection</th><th class="text-right">Field Sim</th><th class="text-right">Order Sim</th><th>Description</th>
     </tr></thead><tbody>`;
-  const sortOrder={exact:0,'same-fields':1,'replaces-covered-by':2,similar:3};
-  const sortedEdges=[...graphEdges].sort((a,b)=>(sortOrder[a._rel.type]??9)-(sortOrder[b._rel.type]??9)||b._rel.fieldSimilarity-a._rel.fieldSimilarity);
   sortedEdges.forEach(e=>{
     const r=e._rel;
     const srcIdx=prepared.find(p=>p._id===r.source);
@@ -4666,6 +4684,20 @@ function dupBuildDetailJson(){
 function dupCopyDetailJson(btn){
   const json=dupBuildDetailJson();if(!json){return}
   navigator.clipboard.writeText(JSON.stringify(json,null,2)).then(()=>{btn.textContent='Copied!';btn.classList.remove('btn-outline','btn-info');btn.classList.add('btn-success','text-white');setTimeout(()=>{btn.textContent='Copy JSON';btn.classList.remove('btn-success','text-white');btn.classList.add('btn-outline','btn-info')},2000)});
+}
+
+function dupCopyTableJSON(btn){
+  const data=window._dupTableData;if(!data||!data.length)return;
+  navigator.clipboard.writeText(JSON.stringify(data,null,2)).then(()=>{btn.textContent='Copied!';btn.classList.remove('btn-outline','btn-info');btn.classList.add('btn-success','text-white');setTimeout(()=>{btn.textContent='Copy JSON';btn.classList.remove('btn-success','text-white');btn.classList.add('btn-outline','btn-info')},2000)});
+}
+
+function dupCopyTableCSV(btn){
+  const data=window._dupTableData;if(!data||!data.length)return;
+  const headers=['Type','Index A','Index B','Collection','Field Similarity','Order Similarity','Description','Last Scan A','Last Scan B','Definition A','Definition B'];
+  const csvEsc=v=>{const s=String(v??'');return s.includes(',')||s.includes('"')||s.includes('\n')?'"'+s.replace(/"/g,'""')+'"':s};
+  const rows=[headers.join(',')];
+  data.forEach(r=>{rows.push([r.type,r.indexA,r.indexB,r.collection,r.fieldSimilarity+'%',r.orderSimilarity+'%',r.description,r.lastScanA,r.lastScanB,r.definitionA,r.definitionB].map(csvEsc).join(','))});
+  navigator.clipboard.writeText(rows.join('\n')).then(()=>{btn.textContent='Copied!';btn.classList.remove('btn-outline','btn-warning');btn.classList.add('btn-success','text-white');setTimeout(()=>{btn.textContent='Copy CSV';btn.classList.remove('btn-success','text-white');btn.classList.add('btn-outline','btn-warning')},2000)});
 }
 
 function dupShowNodeDetail(nodeId){
