@@ -1,5 +1,18 @@
 # Release Notes
 
+## v2.6.2 (2026-04-23)
+
+### Changes
+
+- **🔍 Renamed from "CB Index Treemap" to "CB Index Analyzer"** — Updated the project display name across all files: HTML title and navbar, server startup message, README, sub-READMEs (Ansible, Capella, how-to), and test assertions. The repository slug and package name remain unchanged.
+
+### Stats
+
+- **Files changed:** 4 (`index.html`, `package.json`, `README.md`, `release_notes.md`)
+- Updated version badge to v2.6.2.
+
+---
+
 ## v2.6.1 (2026-04-14)
 
 ### New Features

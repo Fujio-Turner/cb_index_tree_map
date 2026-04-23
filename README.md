@@ -1,4 +1,4 @@
-# 🗺️ CB Index Treemap
+# 🔍 CB Index Analyzer
 
 **Visualize, analyze, and fix your Couchbase GSI index distribution — right in your browser.**
 
@@ -18,9 +18,9 @@ Couchbase gives you the raw data, but staring at giant JSON blobs from `system:i
 
 ## 💡 Step 1: See It
 
-CB Index Treemap turns raw Couchbase JSON into interactive treemaps, bar charts, pie charts, word clouds, and sortable tables so you can instantly spot problems and understand your index landscape.
+CB Index Analyzer turns raw Couchbase JSON into interactive treemaps, bar charts, pie charts, word clouds, and sortable tables so you can instantly spot problems and understand your index landscape.
 
-![CB Index Treemap Screenshot](img/sample_tree_map.png)
+![CB Index Analyzer Screenshot](img/sample_tree_map.png)
 
 Paste your `system:indexes` output to see your index structure. Add Stats API data from each index node to see sizes, performance metrics, and the **Lumpiness Score** — a composite score (0–100) that tells you how evenly your indexes are distributed across nodes.
 
@@ -135,6 +135,11 @@ curl -u <username>:<password> "http://<index-node-hostname>:9102/api/v1/stats?pr
 
 For example, if your cluster has 5 nodes (3 Data + 2 Index), you'd run this curl on each of the 2 index nodes to get stats for all indexes on that node.
 
+> 🤖 **Easy way to collect index stats JSON automatically?**
+> Check out the ready-made scripts in [`how_to_get_json_from_index_nodes/`](./how_to_get_json_from_index_nodes/) — they auto-discover your index nodes and download all the JSON files for you.
+> - **Self-hosted Couchbase** → [Ansible playbook](./how_to_get_json_from_index_nodes/ansible/) — SSH into one node, it finds the rest.
+> - **Couchbase Capella** → [Shell / PowerShell scripts](./how_to_get_json_from_index_nodes/capella/) — run from your Mac or Windows laptop, no SSH needed.
+
 ---
 
 ## 🖥️ How to Use the Tool
@@ -233,7 +238,7 @@ docker compose up --build    # rebuild after updating index.html
 
 ## 📦 Current Release
 
-**v2.6.1** — See [release notes](release_notes.md) for details.
+**v2.6.2** — See [release notes](release_notes.md) for details.
 
 ---
 
