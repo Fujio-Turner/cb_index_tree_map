@@ -1,0 +1,226 @@
+---
+# Ansible playbook to collect Couchbase Index stats.
+#
+# Connects to a SINGLE Couchbase node, discovers all index nodes via the
+# cluster map (/pools/default/), then fetches each index node's stats API
+# from that same machine — no need to SSH into every index node.
+#
+# Port detection:
+#   By default the playbook auto-detects HTTP vs HTTPS.
+#   It tries HTTP (8091/9102) first; if that fails it falls back to HTTPS (18091/19102).
+#   Pass use_ssl=true to skip the HTTP attempt and go straight to HTTPS.
+#
+# Usage:
+#   ansible-playbook -i inventory.ini collect_index_stats.yml
+#
+#   You will be prompted for cb_user and cb_password.
+#   Or pass them (less secure — visible in shell history):
+#     -e "cb_user=Administrator cb_password=password"
+#
+# Optional variables:
+#   use_ssl    - true to skip HTTP and go straight to HTTPS. Default: false (auto-detect)
+#   output_dir - local directory to save fetched JSON files. Default: ./collected_stats
+
+- name: Collect Couchbase Index Stats
+  hosts: cb_node
+  gather_facts: true
+  vars:
+    use_ssl: false
+    output_dir: "./collected_stats"
+    timestamp: "{{ ansible_date_time.iso8601_basic_short }}"
+
+  vars_prompt:
+    - name: cb_user
+      prompt: "Couchbase username"
+      private: false
+    - name: cb_password
+      prompt: "Couchbase password"
+      private: true
+
+  # -----------------------------------------------------------
+  # Pre-flight checks
+  # -----------------------------------------------------------
+  pre_tasks:
+    - name: Validate credentials are provided
+      ansible.builtin.assert:
+        that:
+          - cb_user is defined and cb_user | length > 0
+          - cb_password is defined and cb_password | length > 0
+        fail_msg: "Missing credentials."
+
+    - name: Check if curl is installed
+      ansible.builtin.command: which curl
+      register: curl_check
+      changed_when: false
+      failed_when: false
+
+    - name: Install curl if missing (Debian/Ubuntu)
+      ansible.builtin.apt:
+        name: curl
+        state: present
+      become: true
+      when: curl_check.rc != 0 and ansible_os_family == "Debian"
+
+    - name: Install curl if missing (RHEL/CentOS)
+      ansible.builtin.yum:
+        name: curl
+        state: present
+      become: true
+      when: curl_check.rc != 0 and ansible_os_family == "RedHat"
+
+    - name: Fail if curl unavailable
+      ansible.builtin.fail:
+        msg: "curl is not installed and could not be auto-installed on {{ ansible_os_family }}."
+      when: curl_check.rc != 0 and ansible_os_family not in ["Debian", "RedHat"]
+
+    # -------------------------------------------------------
+    # Auto-detect: HTTP vs HTTPS for management port
+    # -------------------------------------------------------
+    - name: "Auto-detect: try HTTP management port (8091)"
+      ansible.builtin.wait_for:
+        host: localhost
+        port: 8091
+        timeout: 5
+      register: http_mgmt_check
+      failed_when: false
+      when: not (use_ssl | bool)
+
+    - name: "Auto-detect: try HTTPS management port (18091)"
+      ansible.builtin.wait_for:
+        host: localhost
+        port: 18091
+        timeout: 5
+      register: https_mgmt_check
+      failed_when: false
+      when: (use_ssl | bool) or (http_mgmt_check is skipped) or (http_mgmt_check is failed)
+
+    - name: Determine SSL mode
+      ansible.builtin.set_fact:
+        detected_ssl: "{{ (use_ssl | bool) or (http_mgmt_check is skipped) or (http_mgmt_check is failed) }}"
+
+    - name: Set connection parameters
+      ansible.builtin.set_fact:
+        mgmt_protocol: "{{ 'https' if detected_ssl | bool else 'http' }}"
+        mgmt_port: "{{ '18091' if detected_ssl | bool else '8091' }}"
+        index_protocol: "{{ 'https' if detected_ssl | bool else 'http' }}"
+        index_port: "{{ '19102' if detected_ssl | bool else '9102' }}"
+
+    - name: Fail if neither port is reachable
+      ansible.builtin.fail:
+        msg: >
+          Neither HTTP (8091) nor HTTPS (18091) management port is reachable on localhost.
+          Verify the Couchbase Server is running.
+      when: >
+        (http_mgmt_check is failed or http_mgmt_check is skipped) and
+        (https_mgmt_check is failed or https_mgmt_check is skipped)
+
+    - name: Show detected connection mode
+      ansible.builtin.debug:
+        msg: "🔗 Using {{ mgmt_protocol | upper }} (mgmt={{ mgmt_port }}, index={{ index_port }})"
+
+  # -----------------------------------------------------------
+  # Discover index nodes from the cluster map
+  # -----------------------------------------------------------
+  tasks:
+    - name: Create local output directory
+      ansible.builtin.file:
+        path: "{{ output_dir }}"
+        state: directory
+        mode: "0755"
+      delegate_to: localhost
+
+    - name: Fetch cluster map from /pools/default/
+      ansible.builtin.uri:
+        url: "{{ mgmt_protocol }}://localhost:{{ mgmt_port }}/pools/default/"
+        url_username: "{{ cb_user }}"
+        url_password: "{{ cb_password }}"
+        force_basic_auth: true
+        validate_certs: false
+        return_content: true
+        timeout: 30
+      register: cluster_map_response
+      no_log: true
+
+    - name: Parse cluster map JSON
+      ansible.builtin.set_fact:
+        cluster_map: "{{ cluster_map_response.json }}"
+
+    - name: Extract index node hostnames
+      ansible.builtin.set_fact:
+        index_nodes: >-
+          {{
+            cluster_map.nodes
+            | selectattr('services', 'contains', 'index')
+            | map(attribute='hostname')
+            | map('regex_replace', '^\[(.+)\](?::\d+)?$', '\1')
+            | map('regex_replace', ':\d+$', '')
+            | list
+          }}
+
+    - name: Show discovered index nodes
+      ansible.builtin.debug:
+        msg: "Found {{ index_nodes | length }} index node(s): {{ index_nodes | join(', ') }}"
+
+    - name: Fail if no index nodes found
+      ansible.builtin.fail:
+        msg: "No nodes with the 'index' service were found in the cluster map."
+      when: index_nodes | length == 0
+
+    # -----------------------------------------------------------
+    # Collect stats from each discovered index node
+    # -----------------------------------------------------------
+    - name: Fetch index stats from each node
+      ansible.builtin.uri:
+        url: "{{ index_protocol }}://{{ item }}:{{ index_port }}/api/v1/stats?pretty=true"
+        url_username: "{{ cb_user }}"
+        url_password: "{{ cb_password }}"
+        force_basic_auth: true
+        validate_certs: false
+        return_content: true
+        timeout: 30
+      register: index_stats_results
+      no_log: true
+      loop: "{{ index_nodes }}"
+      loop_control:
+        label: "{{ item }}"
+
+    - name: Save stats to temp files on remote host
+      ansible.builtin.copy:
+        content: "{{ item.content }}"
+        dest: "/tmp/index_stats_{{ item.item | regex_replace('[^a-zA-Z0-9]', '_') }}_{{ timestamp }}.json"
+        mode: "0600"
+      loop: "{{ index_stats_results.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Fetch stats files back to control machine
+      ansible.builtin.fetch:
+        src: "/tmp/index_stats_{{ item.item | regex_replace('[^a-zA-Z0-9]', '_') }}_{{ timestamp }}.json"
+        dest: "{{ output_dir }}/index_stats_{{ item.item | regex_replace('[^a-zA-Z0-9]', '_') }}_{{ timestamp }}.json"
+        flat: true
+      loop: "{{ index_stats_results.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Clean up temp files on remote host
+      ansible.builtin.file:
+        path: "/tmp/index_stats_{{ item.item | regex_replace('[^a-zA-Z0-9]', '_') }}_{{ timestamp }}.json"
+        state: absent
+      loop: "{{ index_stats_results.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+  # -----------------------------------------------------------
+  # Summary
+  # -----------------------------------------------------------
+  post_tasks:
+    - name: List collected files
+      ansible.builtin.find:
+        paths: "{{ output_dir }}"
+        patterns: "index_stats_*.json"
+      register: collected_files
+      delegate_to: localhost
+
+    - name: Summary
+      ansible.builtin.debug:
+        msg: "📊 Collected {{ collected_files.files | length }} file(s) into {{ output_dir }}/"
