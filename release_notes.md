@@ -1,5 +1,18 @@
 # Release Notes
 
+## v2.6.2 (2026-04-23)
+
+### Changes
+
+- *(Add release notes here)*
+
+### Stats
+
+- **Files changed:** 4 (`index.html`, `package.json`, `README.md`, `release_notes.md`)
+- Updated version badge to v2.6.2.
+
+---
+
 ## v2.6.1 (2026-04-14)
 
 ### New Features

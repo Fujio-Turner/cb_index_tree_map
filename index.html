@@ -33,7 +33,7 @@
   <div class="flex-1 gap-3">
     <span class="text-xl font-bold text-error">CB Index Treemap</span>
     <span class="text-xs text-base-content/50 hidden sm:inline">Visualize & analyze GSI index sizes, performance & capacity</span>
-    <span class="badge badge-ghost badge-sm text-[10px]">v2.6.1</span>
+    <span class="badge badge-ghost badge-sm text-[10px]">v2.6.2</span>
   </div>
   <div class="flex-none">
     <button class="btn btn-ghost btn-sm gap-1" onclick="openFileManager()"><span id="saved-count" class="badge badge-sm badge-ghost">0</span></button>
@@ -131,7 +131,9 @@
         <button class="btn btn-error btn-sm" onclick="loadStatsData()">Load & Render</button>
         <button class="btn btn-sm btn-outline btn-success" onclick="saveStatsToServer()">Save All Nodes</button>
         <span id="stats-status" class="text-xs"></span>
-        <div class="join ml-auto">
+        <button class="btn btn-xs btn-outline btn-info ml-auto" onclick="statsCopyAllJSON(this)" title="Copy all node stats as JSON">Copy All JSON</button>
+        <button class="btn btn-xs btn-outline btn-warning" onclick="statsCopyAllTSV(this)" title="Copy all node stats for pasting into Excel/Sheets">Copy All Table</button>
+        <div class="join">
           <button class="btn btn-xs join-item btn-active" data-metric="disk_size" onclick="switchMetric(this)" title="Size charts by compressed on-disk bytes (includes fragmentation and overhead). See footnotes.">Disk Size*</button>
           <button class="btn btn-xs join-item" data-metric="data_size" onclick="switchMetric(this)" title="Size charts by uncompressed logical data bytes. Data > Disk is normal due to on-disk compression. See footnotes.">Data Size**</button>
         </div>
@@ -439,6 +441,9 @@
         </button>
         <button class="btn btn-sm btn-outline btn-info gap-1" id="est-compare-copy-btn" onclick="estCompareCopyJson(this)" title="Copy comparison results as JSON">
           Copy JSON
+        </button>
+        <button class="btn btn-sm btn-outline btn-warning gap-1" onclick="estCompareCopyTSV(this)" title="Copy comparison table for pasting into Excel/Sheets">
+          Copy Table
         </button>
         <button class="btn btn-circle btn-ghost btn-lg" onclick="document.getElementById('est-compare-overlay').classList.add('hidden')" title="Close">✕</button>
       </div>
@@ -875,6 +880,26 @@ h+=`<tr class="font-bold bg-base-200 border-t-2 border-base-300"><td>TOTAL (${fl
 <td></td><td></td><td></td><td></td><td></td><td></td></tr>`;
 return h+'</tbody></table></div>'}
 
+function statsCopyAllJSON(btn){
+  const f=getFilters();const fmtISO=v=>v?new Date(v/1e6).toISOString().replace(/\.\d{3}Z$/,'Z'):'never';
+  const hasScan=globalStatsFlat.some(n=>n.flat.some(x=>x.last_known_scan_time&&x.last_known_scan_time>0));
+  const data=globalStatsFlat.filter(n=>matchNodeFilter(n.nodeName,f)).map(node=>{let fl=node.flat.filter(x=>matchFilter(x,f));if(f.uniqueOnly)fl=dedup(fl);return{node:node.nodeName,indexes:fl.map(x=>{const row={name:x.name,bucket:x.bucket,scope:x.scope,collection:x.collection,diskSize:x.disk_size||0,dataSize:x.data_size||0,bloatRatio:x.bloat_ratio||0,fragPercent:x.frag_percent||0,itemsCount:x.items_count||0,residentPercent:x.resident_percent,memoryUsed:x.memory_used||0,cacheHitPercent:x.cache_hit_percent||0,avgScanLatency:x.avg_scan_latency||0,numDocsPending:x.num_docs_pending||0,numRequests:x.num_requests||0,lastScan:fmtTimeAgo(x.last_known_scan_time||0)};if(hasScan)row.lastScanExact=fmtISO(x.last_known_scan_time||0);return row})}}).filter(n=>n.indexes.length);
+  if(!data.length)return;
+  navigator.clipboard.writeText(JSON.stringify(data,null,2)).then(()=>{btn.textContent='Copied!';btn.classList.remove('btn-outline','btn-info');btn.classList.add('btn-success','text-white');setTimeout(()=>{btn.textContent='Copy All JSON';btn.classList.remove('btn-success','text-white');btn.classList.add('btn-outline','btn-info')},2000)});
+}
+
+function statsCopyAllTSV(btn){
+  const f=getFilters();const fmtISO=v=>v?new Date(v/1e6).toISOString().replace(/\.\d{3}Z$/,'Z'):'never';
+  const hasScan=globalStatsFlat.some(n=>n.flat.some(x=>x.last_known_scan_time&&x.last_known_scan_time>0));
+  const headers=['Node','Index','Bucket','Scope','Collection','Disk Size','Data Size','Bloat','Frag%','Items','Res%','Memory','Cache%','Latency','Pending','Requests','Last Scan'];
+  if(hasScan)headers.push('Last Scan - Exact');
+  const tsvEsc=v=>{const s=String(v??'').replace(/\t/g,' ').replace(/\n/g,' ');return s};
+  const rows=[headers.join('\t')];
+  globalStatsFlat.filter(n=>matchNodeFilter(n.nodeName,f)).forEach(node=>{let fl=node.flat.filter(x=>matchFilter(x,f));if(f.uniqueOnly)fl=dedup(fl);fl.forEach(x=>{const cols=[node.nodeName,x.name,x.bucket,x.scope,x.collection,fmt(x.disk_size),fmt(x.data_size),x.bloat_ratio?(x.bloat_ratio).toFixed(1)+'x':'',x.frag_percent||0+'%',x.items_count||0,x.resident_percent!=null?x.resident_percent+'%':'',fmt(x.memory_used),x.cache_hit_percent||0+'%',fmtNs(x.avg_scan_latency||0),x.num_docs_pending||0,x.num_requests||0,fmtTimeAgo(x.last_known_scan_time||0)];if(hasScan)cols.push(fmtISO(x.last_known_scan_time||0));rows.push(cols.map(tsvEsc).join('\t'))})});
+  if(rows.length<2)return;
+  navigator.clipboard.writeText(rows.join('\n')).then(()=>{btn.textContent='Copied!';btn.classList.remove('btn-outline','btn-warning');btn.classList.add('btn-success','text-white');setTimeout(()=>{btn.textContent='Copy All Table';btn.classList.remove('btn-success','text-white');btn.classList.add('btn-outline','btn-warning')},2000)});
+}
+
 // Column sorting
 document.addEventListener('click',function(e){const th=e.target.closest('.stats-table th');if(!th)return;const col=th.dataset.col;if(!col)return;const table=th.closest('table'),tbody=table.querySelector('tbody'),rows=Array.from(tbody.querySelectorAll('tr:not(:last-child)')),isAsc=th.classList.contains('sa-asc');table.querySelectorAll('th').forEach(h=>{h.classList.remove('sa-asc','sa-desc');const a=h.querySelector('.sa');if(a){a.classList.remove('text-error');a.textContent='▼'}});const ci=Array.from(th.parentNode.children).indexOf(th);rows.sort((a,b)=>{const cA=a.children[ci],cB=b.children[ci],hA=cA.hasAttribute('data-sort'),hB=cB.hasAttribute('data-sort');let va=hA?cA.getAttribute('data-sort'):cA.textContent.trim(),vb=hB?cB.getAttribute('data-sort'):cB.textContent.trim();va=Number(va);vb=Number(vb);if(isNaN(va))va=cA.textContent.trim();if(isNaN(vb))vb=cB.textContent.trim();if(typeof va==='number'&&typeof vb==='number')return isAsc?vb-va:va-vb;return isAsc?String(vb).localeCompare(String(va)):String(va).localeCompare(String(vb))});th.classList.add(isAsc?'sa-desc':'sa-asc');const ar=th.querySelector('.sa');if(ar){ar.classList.add('text-error');ar.textContent=isAsc?'▼':'▲'}const total=tbody.querySelector('tr:last-child');rows.forEach(r=>tbody.appendChild(r));if(total)tbody.appendChild(total)});
 
@@ -909,7 +934,10 @@ function findDuplicateKeys(keys){if(!keys)return[];const fields=getIndexFields(k
 
 function makeSystemTable(filtered){
   if(!filtered.length)return'';
-  let h=`<div class="card bg-base-100 shadow-sm mt-4"><div class="card-body p-3"><div class="flex justify-between items-center mb-2"><h3 class="font-bold text-sm">Index Definitions Table</h3><div class="badge badge-ghost">${filtered.length} indexes</div></div><div class="stats-table-wrap"><table class="table table-xs table-pin-rows stats-table" id="tbl-sys"><thead><tr class="bg-base-200">
+  const fmtISO=v=>v?new Date(v/1e6).toISOString().replace(/\.\d{3}Z$/,'Z'):'never';
+  const hasScan=filtered.some(f=>f.last_known_scan_time&&f.last_known_scan_time>0);
+  window._sysTableData=filtered.map(f=>{const createStmt=buildCreateIndex(f);const row={name:f.name,bucket:f.bucket,scope:f.scope,collection:f.collection,isArray:isArrayIndex(f.keys),docTypeFirst:hasDocTypeFirst(f.keys),whereOverlapKeys:findWhereFieldsInIndex(f.keys,f.condition).join(', '),dupeKeys:findDuplicateKeys(f.keys).join(', '),replicas:f.replica||0,createIndex:createStmt};if(hasScan){row.lastScan=fmtTimeAgo(f.last_known_scan_time||0);row.lastScanExact=fmtISO(f.last_known_scan_time||0)}return row});
+  let h=`<div class="card bg-base-100 shadow-sm mt-4"><div class="card-body p-3"><div class="flex justify-between items-center mb-2"><h3 class="font-bold text-sm">Index Definitions Table</h3><div class="flex items-center gap-2"><button class="btn btn-xs btn-outline btn-info" onclick="sysCopyTableJSON(this)" title="Copy table data as JSON">Copy JSON</button><button class="btn btn-xs btn-outline btn-warning" onclick="sysCopyTableTSV(this)" title="Copy table for pasting into Excel/Sheets">Copy Table</button><div class="badge badge-ghost">${filtered.length} indexes</div></div></div><div class="stats-table-wrap"><table class="table table-xs table-pin-rows stats-table" id="tbl-sys"><thead><tr class="bg-base-200">
 <th data-col="name" class="cursor-pointer hover:bg-base-300" title="Index name">Index<span class="sa ml-1 text-[9px] text-base-content/30">▼</span></th>
 <th data-col="bucket" class="cursor-pointer hover:bg-base-300" title="Bucket">Bucket</th>
 <th data-col="scope" class="cursor-pointer hover:bg-base-300" title="Scope">Scope</th>
@@ -945,6 +973,23 @@ function makeSystemTable(filtered){
   });
   h+=`</tbody></table></div></div></div>`;
   return h;
+}
+
+function sysCopyTableJSON(btn){
+  const data=window._sysTableData;if(!data||!data.length)return;
+  navigator.clipboard.writeText(JSON.stringify(data,null,2)).then(()=>{btn.textContent='Copied!';btn.classList.remove('btn-outline','btn-info');btn.classList.add('btn-success','text-white');setTimeout(()=>{btn.textContent='Copy JSON';btn.classList.remove('btn-success','text-white');btn.classList.add('btn-outline','btn-info')},2000)});
+}
+
+function sysCopyTableTSV(btn){
+  const data=window._sysTableData;if(!data||!data.length)return;
+  const hasScan=data.some(r=>r.lastScanExact!==undefined);
+  const headers=['Index','Bucket','Scope','Collection','Array Idx','DocType 1st','WHERE∩Keys','Dupe Keys','Replicas'];
+  if(hasScan)headers.push('Last Scan','Last Scan - Exact');
+  headers.push('CREATE INDEX');
+  const tsvEsc=v=>{const s=String(v??'').replace(/\t/g,' ').replace(/\n/g,' ');return s};
+  const rows=[headers.join('\t')];
+  data.forEach(r=>{const cols=[r.name,r.bucket,r.scope,r.collection,r.isArray?'YES':'NO',r.docTypeFirst?'YES':'NO',r.whereOverlapKeys,r.dupeKeys,r.replicas];if(hasScan)cols.push(r.lastScan,r.lastScanExact);cols.push(r.createIndex);rows.push(cols.map(tsvEsc).join('\t'))});
+  navigator.clipboard.writeText(rows.join('\n')).then(()=>{btn.textContent='Copied!';btn.classList.remove('btn-outline','btn-warning');btn.classList.add('btn-success','text-white');setTimeout(()=>{btn.textContent='Copy Table';btn.classList.remove('btn-success','text-white');btn.classList.add('btn-outline','btn-warning')},2000)});
 }
 
 function renderTreemapView(){const c=document.getElementById('treemap-content');c.innerHTML='';activeCharts=activeCharts.filter(ch=>{try{ch.dispose()}catch{}return false});chartIndexMaps=[];if(!globalSystemFlat.length){c.innerHTML='<div class="text-center py-12 text-base-content/40">No data loaded</div>';return}const f=getFilters();let filtered=globalSystemFlat.filter(i=>matchFilter(i,f));if(f.uniqueOnly)filtered=dedup(filtered);if(!filtered.length){c.innerHTML='<div class="alert alert-warning"><span>No indexes match current filters</span></div>';return}
@@ -4339,6 +4384,28 @@ function estCompareCopyJson(btn){
   });
 }
 
+function estCompareCopyTSV(btn){
+  const results=window._estCompareResults||[];
+  if(!results.length)return;
+  const parsed=window._estCompareParsed||{};
+  const fmtISO=v=>v?new Date(v/1e6).toISOString().replace(/\.\d{3}Z$/,'Z'):'never';
+  const hasScan=results.some(r=>r.stats&&r.stats.last_known_scan_time&&r.stats.last_known_scan_time>0);
+  const headers=['Relationship','Field Sim%','Order Sim%','New Index','Existing Index','Bucket','Scope','Collection'];
+  if(hasScan)headers.push('Last Scan','Last Scan - Exact');
+  headers.push('Disk Size','Items','Requests','Existing CREATE INDEX');
+  const tsvEsc=v=>{const s=String(v??'').replace(/\t/g,' ').replace(/\n/g,' ');return s};
+  const rows=[headers.join('\t')];
+  results.forEach(r=>{
+    const idx=r.sysIdx;const s=r.stats;
+    const scanNs=s?s.last_known_scan_time||0:0;
+    const cols=[r.relationship,r.fieldSimilarity+'%',r.orderSimilarity+'%',parsed.indexName||'unknown',idx.name,idx.bucket,idx.scope,idx.collection];
+    if(hasScan)cols.push(fmtTimeAgo(scanNs),fmtISO(scanNs));
+    cols.push(s?estFormatBytes(s.disk_size||0):'',s?s.items_count||0:'',s?s.num_requests||0:'',buildCreateIndex(idx));
+    rows.push(cols.map(tsvEsc).join('\t'));
+  });
+  navigator.clipboard.writeText(rows.join('\n')).then(()=>{btn.textContent='Copied!';btn.classList.remove('btn-outline','btn-warning');btn.classList.add('btn-success','text-white');setTimeout(()=>{btn.textContent='Copy Table';btn.classList.remove('btn-success','text-white');btn.classList.add('btn-outline','btn-warning')},2000)});
+}
+
 // Init estimator when tab is first shown
 let estInitialized=false;
 function estInit(){if(estInitialized)return;estInitialized=true;estSetupNumDocsInput();estSetupDocIdInput();estOnEngineChange()}
@@ -4515,13 +4582,17 @@ function renderDuplicateFinder(){
   const sortedEdges=[...graphEdges].sort((a,b)=>(sortOrder[a._rel.type]??9)-(sortOrder[b._rel.type]??9)||b._rel.fieldSimilarity-a._rel.fieldSimilarity);
 
   // Build table data array for copy functions (includes hidden columns)
+  const _dupHasScan=prepared.some(p=>{const st=p._stats?p._stats.last_known_scan_time:(p.last_known_scan_time||0);return st&&st>0});
   window._dupTableData=sortedEdges.map(e=>{
     const r=e._rel;
     const srcIdx=prepared.find(p=>p._id===r.source);
     const tgtIdx=prepared.find(p=>p._id===r.target);
     const srcScan=srcIdx&&srcIdx._stats?srcIdx._stats.last_known_scan_time:(srcIdx?srcIdx.last_known_scan_time||0:0);
     const tgtScan=tgtIdx&&tgtIdx._stats?tgtIdx._stats.last_known_scan_time:(tgtIdx?tgtIdx.last_known_scan_time||0:0);
-    return{type:DUP_EDGE_LABELS[r.type]||r.type,indexA:srcIdx?srcIdx.name:r.source,indexB:tgtIdx?tgtIdx.name:r.target,collection:srcIdx?srcIdx.bucket+'.'+srcIdx.scope+'.'+srcIdx.collection:'',fieldSimilarity:r.fieldSimilarity,orderSimilarity:r.orderSimilarity,description:r.desc,lastScanA:fmtTimeAgo(srcScan),lastScanB:fmtTimeAgo(tgtScan),definitionA:srcIdx?srcIdx._create:'',definitionB:tgtIdx?tgtIdx._create:''};
+    const fmtISO=v=>v?new Date(v/1e6).toISOString().replace(/\.\d{3}Z$/,'Z'):'never';
+    const row={type:DUP_EDGE_LABELS[r.type]||r.type,indexA:srcIdx?srcIdx.name:r.source,indexB:tgtIdx?tgtIdx.name:r.target,collection:srcIdx?srcIdx.bucket+'.'+srcIdx.scope+'.'+srcIdx.collection:'',fieldSimilarity:r.fieldSimilarity,orderSimilarity:r.orderSimilarity,description:r.desc,lastScanA:fmtTimeAgo(srcScan),lastScanB:fmtTimeAgo(tgtScan),definitionA:srcIdx?srcIdx._create:'',definitionB:tgtIdx?tgtIdx._create:''};
+    if(_dupHasScan){row.lastScanAExact=fmtISO(srcScan);row.lastScanBExact=fmtISO(tgtScan)}
+    return row;
   });
 
   html+=`<div class="card bg-base-100 shadow-sm mt-4"><div class="card-body p-3">
@@ -4529,7 +4600,7 @@ function renderDuplicateFinder(){
       <h3 class="font-bold text-sm">All Relationships</h3>
       <div class="flex items-center gap-2">
         <button class="btn btn-xs btn-outline btn-info" onclick="dupCopyTableJSON(this)" title="Copy table data as JSON (includes index definitions)">Copy JSON</button>
-        <button class="btn btn-xs btn-outline btn-warning" onclick="dupCopyTableCSV(this)" title="Copy table data as CSV (includes index definitions)">Copy CSV</button>
+        <button class="btn btn-xs btn-outline btn-warning" onclick="dupCopyTableTSV(this)" title="Copy table for pasting into Excel/Sheets">Copy Table</button>
         <div class="badge badge-ghost">${graphEdges.length} relationships</div>
       </div>
     </div>
@@ -4691,13 +4762,16 @@ function dupCopyTableJSON(btn){
   navigator.clipboard.writeText(JSON.stringify(data,null,2)).then(()=>{btn.textContent='Copied!';btn.classList.remove('btn-outline','btn-info');btn.classList.add('btn-success','text-white');setTimeout(()=>{btn.textContent='Copy JSON';btn.classList.remove('btn-success','text-white');btn.classList.add('btn-outline','btn-info')},2000)});
 }
 
-function dupCopyTableCSV(btn){
+function dupCopyTableTSV(btn){
   const data=window._dupTableData;if(!data||!data.length)return;
-  const headers=['Type','Index A','Index B','Collection','Field Similarity','Order Similarity','Description','Last Scan A','Last Scan B','Definition A','Definition B'];
-  const csvEsc=v=>{const s=String(v??'');return s.includes(',')||s.includes('"')||s.includes('\n')?'"'+s.replace(/"/g,'""')+'"':s};
-  const rows=[headers.join(',')];
-  data.forEach(r=>{rows.push([r.type,r.indexA,r.indexB,r.collection,r.fieldSimilarity+'%',r.orderSimilarity+'%',r.description,r.lastScanA,r.lastScanB,r.definitionA,r.definitionB].map(csvEsc).join(','))});
-  navigator.clipboard.writeText(rows.join('\n')).then(()=>{btn.textContent='Copied!';btn.classList.remove('btn-outline','btn-warning');btn.classList.add('btn-success','text-white');setTimeout(()=>{btn.textContent='Copy CSV';btn.classList.remove('btn-success','text-white');btn.classList.add('btn-outline','btn-warning')},2000)});
+  const hasScan=data.some(r=>r.lastScanAExact!==undefined);
+  const headers=['Type','Index A','Index B','Collection','Field Similarity','Order Similarity','Description','Last Scan A','Last Scan B'];
+  if(hasScan)headers.push('Last Scan A - Exact','Last Scan B - Exact');
+  headers.push('Definition A','Definition B');
+  const tsvEsc=v=>{const s=String(v??'').replace(/\t/g,' ').replace(/\n/g,' ');return s};
+  const rows=[headers.join('\t')];
+  data.forEach(r=>{const cols=[r.type,r.indexA,r.indexB,r.collection,r.fieldSimilarity+'%',r.orderSimilarity+'%',r.description,r.lastScanA,r.lastScanB];if(hasScan)cols.push(r.lastScanAExact,r.lastScanBExact);cols.push(r.definitionA,r.definitionB);rows.push(cols.map(tsvEsc).join('\t'))});
+  navigator.clipboard.writeText(rows.join('\n')).then(()=>{btn.textContent='Copied!';btn.classList.remove('btn-outline','btn-warning');btn.classList.add('btn-success','text-white');setTimeout(()=>{btn.textContent='Copy Table';btn.classList.remove('btn-success','text-white');btn.classList.add('btn-outline','btn-warning')},2000)});
 }
 
 function dupShowNodeDetail(nodeId){

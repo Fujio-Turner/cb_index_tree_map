@@ -135,6 +135,11 @@ curl -u <username>:<password> "http://<index-node-hostname>:9102/api/v1/stats?pr
 
 For example, if your cluster has 5 nodes (3 Data + 2 Index), you'd run this curl on each of the 2 index nodes to get stats for all indexes on that node.
 
+> 🤖 **Easy way to collect index stats JSON automatically?**
+> Check out the ready-made scripts in [`how_to_get_json_from_index_nodes/`](./how_to_get_json_from_index_nodes/) — they auto-discover your index nodes and download all the JSON files for you.
+> - **Self-hosted Couchbase** → [Ansible playbook](./how_to_get_json_from_index_nodes/ansible/) — SSH into one node, it finds the rest.
+> - **Couchbase Capella** → [Shell / PowerShell scripts](./how_to_get_json_from_index_nodes/capella/) — run from your Mac or Windows laptop, no SSH needed.
+
 ---
 
 ## 🖥️ How to Use the Tool
@@ -233,7 +238,7 @@ docker compose up --build    # rebuild after updating index.html
 
 ## 📦 Current Release
 
-**v2.6.1** — See [release notes](release_notes.md) for details.
+**v2.6.2** — See [release notes](release_notes.md) for details.
 
 ---
 
