@@ -1,4 +1,4 @@
-# 🗺️ CB Index Treemap
+# 🔍 CB Index Analyzer
 
 **Visualize, analyze, and fix your Couchbase GSI index distribution — right in your browser.**
 
@@ -18,9 +18,9 @@ Couchbase gives you the raw data, but staring at giant JSON blobs from `system:i
 
 ## 💡 Step 1: See It
 
-CB Index Treemap turns raw Couchbase JSON into interactive treemaps, bar charts, pie charts, word clouds, and sortable tables so you can instantly spot problems and understand your index landscape.
+CB Index Analyzer turns raw Couchbase JSON into interactive treemaps, bar charts, pie charts, word clouds, and sortable tables so you can instantly spot problems and understand your index landscape.
 
-![CB Index Treemap Screenshot](img/sample_tree_map.png)
+![CB Index Analyzer Screenshot](img/sample_tree_map.png)
 
 Paste your `system:indexes` output to see your index structure. Add Stats API data from each index node to see sizes, performance metrics, and the **Lumpiness Score** — a composite score (0–100) that tells you how evenly your indexes are distributed across nodes.
 

@@ -133,7 +133,7 @@ describe('Static files', () => {
     const r = await request('GET', '/');
     expect(r.status).toBe(200);
     expect(r.headers['content-type']).toBe('text/html');
-    expect(r.body).toContain('CB Index Treemap');
+    expect(r.body).toContain('CB Index Analyzer');
   });
 
   test('GET /index.html', async () => {

@@ -1,6 +1,6 @@
 # How to Get Index Stats JSON from Couchbase Index Nodes
 
-This folder contains tools to collect the GSI Index stats JSON needed by **cb_index_tree_map**.
+This folder contains tools to collect the GSI Index stats JSON needed by **CB Index Analyzer**.
 
 Choose the method that matches your deployment:
 

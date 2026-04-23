@@ -70,7 +70,7 @@ index_stats_{hostname}_{YYYYMMDDTHHMMSS}.json
 
 ## Using the Collected Stats
 
-Load the downloaded JSON files into the **cb_index_tree_map** tool:
+Load the downloaded JSON files into the **CB Index Analyzer** tool:
 
 1. `npm start`
 2. Open the UI and upload/paste the collected JSON.
